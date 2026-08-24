@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "bash \"${ZCODE_PROJECT_DIR}/reload.sh\"",
+              "timeoutMs": 30000,
+              "statusMessage": "Agent-Lit 改动检测与自动重启"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

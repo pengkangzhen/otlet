@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts (PyInstaller)
+build/
+dist/
+
+# macOS
+.DS_Store
+
+# Dev auto-reload stamp & session artifacts
+.reload-stamp
+.playwright-mcp/
+.remember/
+.claude/
+.zcode/plans/
