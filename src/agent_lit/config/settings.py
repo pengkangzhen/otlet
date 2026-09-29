@@ -38,8 +38,15 @@ class Settings(BaseModel):
         if config_path is None:
             config_path = Path.home() / ".agent-lit" / "config.yaml"
         config_path.parent.mkdir(parents=True, exist_ok=True)
+        # mode="json" keeps Path values as plain strings — yaml.safe_load
+        # in load() cannot parse the python-specific tags yaml.dump
+        # emits for Path objects
         config_path.write_text(
-            yaml.dump(self.model_dump(), default_flow_style=False, allow_unicode=True),
+            yaml.dump(
+                self.model_dump(mode="json"),
+                default_flow_style=False,
+                allow_unicode=True,
+            ),
             encoding="utf-8",
         )
 

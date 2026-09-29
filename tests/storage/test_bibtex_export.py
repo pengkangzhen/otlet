@@ -2,8 +2,8 @@
 
 from agent_lit.models.author import Author
 from agent_lit.models.paper import Paper
+from agent_lit.services.importers import parse_bibtex
 from agent_lit.storage.bibtex_export import generate_bibtex, paper_to_bibtex
-from agent_lit.web.api import _parse_bibtex
 
 
 def _paper(**kwargs) -> Paper:
@@ -62,7 +62,7 @@ def test_escape_special_characters():
 def test_roundtrip_with_bibtex_parser():
     """Generated .bib must be re-parseable by the app's own importer."""
     bib = generate_bibtex([_paper(), _paper(title="Deep Residual Learning")])
-    entries = _parse_bibtex(bib)
+    entries = parse_bibtex(bib)
     assert len(entries) == 2
     titles = {e["title"] for e in entries}
     assert "Attention Is All You Need" in titles

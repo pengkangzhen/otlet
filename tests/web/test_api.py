@@ -169,7 +169,9 @@ def test_export_bibtex_subset_writes_only_selected_papers(api: Api, tmp_path: Pa
     assert "Alpha Paper" not in text
 
     # Empty subset / unknown ids must not write a file
-    d2 = json.loads(api.export_bibtex(str(tmp_path / "empty.bib"), json.dumps(["nope"])))
+    d2 = json.loads(
+        api.export_bibtex(str(tmp_path / "empty.bib"), json.dumps(["nope"]))
+    )
     assert d2["ok"] is False
     assert not (tmp_path / "empty.bib").exists()
 
@@ -191,9 +193,12 @@ def test_auto_tag_paper_nlp_method_needs_no_llm(api: Api):
     assert paper.auto_tags, "extracted tags must be linked as auto source"
 
 
-def test_reveal_pdf_requires_existing_file(api: Api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_reveal_pdf_requires_existing_file(
+    api: Api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Reveal in Finder: runs `open -R` only when a real PDF file is attached."""
     import subprocess
+
     from agent_lit.models.paper import Paper
 
     # No PDF attached → refused

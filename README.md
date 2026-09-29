@@ -8,9 +8,9 @@
 - 📄 **PDF 智能导入** — 拖拽 PDF 自动识别元数据（DOI → S2 查询 → 标题搜索），类 Zotero 体验
 - 💬 **AI 对话** — 选中论文直接与 AI 对话，快速了解论文内容和方法
 - 🔍 **智能搜索** — 对接 Semantic Scholar API，一键搜索导入文献
-- 🤖 **自动标签** — LLM 自动为论文生成标签建议
-- 🖥️ **TUI 界面** — 终端内分屏交互：左侧文献列表 + 右侧对话面板
-- ⌨️ **CLI 命令** — 完整的命令行操作支持
+- 🤖 **自动标签** — 离线关键词提取或 LLM 自动为论文生成标签建议
+- 🖥️ **桌面 GUI** — pywebview 原生窗口（无子命令直接启动）
+- ⌨️ **完整 CLI** — 导入/检索/标签/笔记/AI 对话/导出全流程命令行操作
 
 ## 安装
 
@@ -23,36 +23,54 @@ uv sync
 ### CLI 命令
 
 ```bash
-# 搜索文献（Semantic Scholar）
-uv run --no-sync agent-lit search "transformer attention"
+# 在线搜索文献（Semantic Scholar）
+agent-lit search "transformer attention" --limit 5
 
-# 通过 DOI 导入文献
-uv run --no-sync agent-lit import --doi "10.5555/1234567"
+# 导入 —— 六种来源统一走 add 命令
+agent-lit add paper.pdf                    # PDF 文件（自动识别元数据 + 去重）
+agent-lit add ~/Downloads/*.pdf            # 多个 PDF
+agent-lit add --folder ~/papers            # 递归导入文件夹下所有 PDF
+agent-lit add --doi "10.1287/opre.2020.1"  # 通过 DOI
+agent-lit add --query "attention is all you need"  # 在线搜索取第一条
+agent-lit add --bibtex library.bib         # BibTeX 文件（Zotero 导出）
+agent-lit add --zotero                     # 本机 Zotero 库（--collections 1,2 选分类）
+agent-lit add --doi "10.1/x" --auto-tag    # 导入时追加 LLM 标签建议
 
-# 搜索导入 + 自动标签
-uv run --no-sync agent-lit import "attention is all you need" --auto-tag
+# 文库管理
+agent-lit list                             # 列出全部文献
+agent-lit list -q "supply chain"           # 本地全文过滤
+agent-lit list --tags resilience,location  # 标签过滤（AND；--any 切 OR）
+agent-lit list --json                      # JSON 输出（供脚本使用）
+agent-lit show <paper_id>                  # 详情：元数据 + 摘要 + 笔记
+agent-lit open <paper_id>                  # 系统默认阅读器打开 PDF
+agent-lit rm <paper_id>                    # 移入回收站
+agent-lit trash                            # 回收站：list / restore / purge / empty
 
-# 📄 拖拽 PDF 导入（自动识别元数据）
-uv run --no-sync agent-lit import-pdf ~/Downloads/paper.pdf
+# 标签
+agent-lit tag add <paper_id> resilience location   # 打标签（可多个）
+agent-lit tag remove <paper_id> resilience
+agent-lit tags                             # 标签列表（--auto 含自动标签）
+agent-lit tags rename old-name new-name
+agent-lit autotag <paper_id>               # 离线关键词打标（--method llm 用大模型）
 
-# PDF 导入 + 自动标签
-uv run --no-sync agent-lit import-pdf ~/Downloads/paper.pdf --auto-tag
+# 笔记与 AI 对话
+agent-lit note add <paper_id> "关键基线论文"
+agent-lit note list <paper_id>
+agent-lit chat <paper_id>                  # 交互式对话（流式输出，历史按论文保存）
+agent-lit chat <paper_id> -m "这篇论文的方法是什么？"  # 单次提问
 
-# 列出文库中的文献
-uv run --no-sync agent-lit list
+# 导出与配置
+agent-lit export -o library.bib            # 导出 BibTeX（--ids 选部分论文）
+agent-lit settings                         # 查看配置（密钥脱敏）
+agent-lit settings set lit_model glm-4.7   # 修改配置（写入 ~/.agent-lit/config.yaml）
 
-# 管理标签
-uv run --no-sync agent-lit tags list
-uv run --no-sync agent-lit tags add --name "nlp"
-uv run --no-sync agent-lit tag add --paper-id abc123 --tag "nlp"
-
-# 启动 TUI 交互界面
-uv run --no-sync agent-lit tui
+# 启动桌面 GUI（无子命令时同样默认启动 GUI）
+agent-lit gui
 ```
 
 ### PDF 智能导入
 
-`import-pdf` 命令模拟 Zotero 的元数据识别流程：
+`agent-lit add <pdf>` 模拟 Zotero 的元数据识别流程：
 
 1. **XMP 元数据** → 检查 PDF 内嵌 DOI（置信度 95%）
 2. **文本 DOI** → 正则提取前几页中的 DOI → S2 API 查询（90%）
@@ -62,40 +80,6 @@ uv run --no-sync agent-lit tui
 6. **文本回退** → 构建基础 Paper 对象（30%）
 
 在终端中可以直接将 PDF 文件**拖拽到命令行**（自动生成路径），然后回车即可导入。
-
-### TUI 界面
-
-运行 `agent-lit tui` 后进入终端交互界面：
-
-```
-┌───────────────────────────┬────────────────────────────┐
-│ 🔍 Search / Paste PDF...  │  💬 Chat — Paper Title     │
-│───────────────────────────│                            │
-│ 🏷️ Tags                   │  You: 这篇论文讲了什么?     │
-│ ☐ ml  ☐ nlp  ☐ cv        │  AI: 这篇论文提出了一种...  │
-│───────────────────────────│                            │
-│ Paper List                │  📂 Import: paper.pdf      │
-│ ▶ Attention Is All You... │  ✅ Imported via DOI (90%) │
-│   BERT: Pre-training...   │                            │
-│   GPT-4 Technical Report  │                            │
-│───────────────────────────│                            │
-│ Paper: Attention Is All...│  Ask about this paper...   │
-│ Authors: Vaswani et al.   │                            │
-│ Tags: nlp, transformer    │                            │
-└───────────────────────────┴────────────────────────────┘
-```
-
-**TUI 快捷键：**
-- `s` — 聚焦搜索框
-- `Ctrl+P` — 切换到 PDF 导入模式（在搜索框粘贴路径）
-- `t` — 切换标签面板
-- `r` — 刷新数据
-- `q` — 退出
-
-**TUI PDF 导入方式：**
-1. 按 `Ctrl+P` 或点击搜索框
-2. 将 PDF 文件从 Finder 拖拽到终端（自动粘贴路径）
-3. 按回车，自动识别并导入
 
 ## 配置
 
@@ -130,18 +114,22 @@ agent-lit/
 │   │   ├── paper.py     # 论文模型
 │   │   ├── author.py    # 作者模型
 │   │   └── tag.py       # 标签模型
+│   ├── services/        # 服务层（GUI 与 CLI 共享）
+│   │   └── importers.py # 导入管线：去重 / 自动标签 / BibTeX 解析
 │   ├── storage/         # 存储层
 │   │   ├── database.py  # SQLite 数据库
 │   │   ├── pdf_store.py # PDF 文件管理
-│   │   └── pdf_metadata.py  # PDF 元数据识别
+│   │   ├── pdf_metadata.py  # PDF 元数据识别
+│   │   ├── zotero_import.py # Zotero 数据库读取
+│   │   └── bibtex_export.py # BibTeX 导出
 │   ├── llm/             # LLM 抽象层
 │   │   └── provider.py  # 统一 LLM 接口 (litellm)
-│   ├── tui/             # Textual TUI
-│   │   ├── app.py       # 主应用
-│   │   ├── screens/     # 界面
-│   │   └── widgets/     # 组件
 │   ├── config/          # 配置
 │   │   └── settings.py  # 应用设置
+│   ├── web/             # 桌面 GUI (pywebview)
+│   │   ├── app.py       # 窗口与原生菜单
+│   │   ├── api.py       # JS→Python 桥接 API
+│   │   └── static/      # 前端（单文件 HTML）
 │   └── cli.py           # 命令行入口
 ├── tests/               # 测试
 └── docs/                # 文档
@@ -151,7 +139,8 @@ agent-lit/
 
 | 组件 | 技术 |
 |------|------|
-| TUI 框架 | Textual |
+| 桌面 GUI | pywebview |
+| CLI 输出 | rich |
 | PDF 解析 | PyMuPDF |
 | LLM 接入 | litellm（支持 OpenAI/Anthropic/本地模型） |
 | 学术搜索 | Semantic Scholar API |

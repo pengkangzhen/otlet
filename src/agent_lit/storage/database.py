@@ -377,8 +377,10 @@ class Database:
 
     @_locked
     def get_paper_by_doi(self, doi: str) -> Paper | None:
+        # DOIs are case-insensitive per DOI handbook — compare case-blind
         row = self._conn.execute(
-            "SELECT * FROM papers WHERE doi = ? AND is_deleted = 0", (doi,)
+            "SELECT * FROM papers WHERE LOWER(doi) = LOWER(?) AND is_deleted = 0",
+            (doi,),
         ).fetchone()
         if not row:
             return None
@@ -396,7 +398,8 @@ class Database:
                 for c in unicodedata.normalize("NFKD", s)
                 if c.isalnum() or c.isspace()
             )
-            return s[:120]
+            # collapse whitespace runs so "a  b" matches "a b"
+            return " ".join(s.split())[:120]
 
         norm = _norm(title)
         rows = self._conn.execute(

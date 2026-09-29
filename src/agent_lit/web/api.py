@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 from pathlib import Path
 
@@ -15,6 +14,13 @@ from agent_lit.agents.search import SearchAgent
 from agent_lit.config.settings import Settings
 from agent_lit.llm.provider import LLMProvider
 from agent_lit.models.paper import Paper
+from agent_lit.services.importers import (
+    entry_to_paper,
+    extract_auto_tags,
+    import_pdf_file,
+    parse_bibtex,
+    save_zotero_item,
+)
 from agent_lit.storage.database import Database
 from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
 from agent_lit.storage.pdf_store import PDFStore
@@ -111,68 +117,11 @@ class Api:
         cleaned = cleaned.replace("\\(", "(").replace("\\)", ")")
         cleaned = cleaned.replace("\\[", "[").replace("\\]", "]")
         path = Path(cleaned).expanduser().resolve()
-        if not path.exists():
-            return json.dumps({
-                "ok": False,
-                "error": f"File not found: {path}",
-            })
-        if path.suffix.lower() != ".pdf":
-            return json.dumps({"ok": False, "error": "Not a PDF file"})
 
-        result = self._pdf_extractor.extract(path)
-        if result.paper is None:
-            return json.dumps({"ok": False, "error": "Could not identify paper"})
-
-        paper = result.paper
-
-        # Dedup: check existing paper by DOI or title
-        dup = None
-        if paper.doi:
-            dup = self._db.get_paper_by_doi(paper.doi)
-        if not dup:
-            dup = self._db.get_paper_by_title(paper.title)
-        if dup:
-            # The dropped PDF is still valuable: attach it to the existing
-            # paper when it has none, instead of discarding the file
-            attached = False
-            if not dup.pdf_path:
-                try:
-                    stored = self._pdf_store.import_file(path, paper_id=dup.id)
-                    self._db.update_paper_pdf(dup.id, str(stored))
-                    attached = True
-                except Exception:
-                    pass
-            return json.dumps({
-                "ok": False,
-                "duplicate": True,
-                "existing_id": dup.id,
-                "attached": attached,
-                "error": f"Already in library: {dup.title}",
-            })
-
-        # Infer paper type from venue if not already set
-        if not paper.paper_type:
-            paper.paper_type = _infer_paper_type(paper.venue)
-
-        # Auto-tag: extract from paper keywords + venue (kept out of manual tags)
-        paper.auto_tags = _extract_auto_tags(paper)
-
-        try:
-            stored = self._pdf_store.import_file(path, paper_id=paper.id)
-            paper.pdf_path = str(stored)
-            self._db.add_paper(paper)
-        except Exception as e:
-            return json.dumps({
-                "ok": False,
-                "error": f"Save error: {e} (db_path: {self._settings.db_path})",
-            })
-
-        return json.dumps({
-            "ok": True,
-            "paper": paper.model_dump(mode="json"),
-            "method": result.method,
-            "confidence": result.confidence,
-        })
+        result = import_pdf_file(
+            self._db, self._pdf_store, self._pdf_extractor, path
+        )
+        return json.dumps(result)
 
     def import_pdf_base64(self, filename: str, b64data: str) -> str:
         """Import a PDF from base64-encoded content (used by drag & drop)."""
@@ -243,7 +192,7 @@ class Api:
         """
         changed = 0
         for p in self._db.list_papers():
-            auto = set(_extract_auto_tags(p))
+            auto = set(extract_auto_tags(p))
             changed += self._db.mark_tag_source(p.id, auto, "auto")
         return json.dumps({"ok": True, "reclassified": changed})
 
@@ -357,32 +306,14 @@ class Api:
             return json.dumps({"ok": False, "error": f"File not found: {path}"})
 
         text = path.read_text(encoding="utf-8", errors="replace")
-        entries = _parse_bibtex(text)
+        entries = parse_bibtex(text)
 
         if not entries:
             return json.dumps({"ok": False, "error": "No entries found in BibTeX"})
 
         imported = []
         for entry in entries:
-            paper = Paper(
-                title=entry.get("title", "Untitled"),
-                authors=_bibtex_authors(entry.get("author", "")),
-                year=_bibtex_int(entry.get("year")),
-                venue=entry.get("journal") or entry.get("booktitle"),
-                volume=entry.get("volume"),
-                issue=entry.get("number"),
-                pages=entry.get("pages"),
-                publisher=entry.get("publisher"),
-                language=entry.get("language"),
-                doi=entry.get("doi"),
-                url=entry.get("url"),
-                abstract=entry.get("abstract"),
-                keywords=_bibtex_keywords(entry.get("keywords", "")),
-                bibtex_key=entry.get("_key"),
-                paper_type=_bibtex_type(entry.get("_type", "")),
-            )
-            auto_tags = _extract_auto_tags(paper)
-            paper.auto_tags = auto_tags
+            paper = entry_to_paper(entry)
             self._db.add_paper(paper)
             imported.append(paper.model_dump(mode="json"))
 
@@ -445,35 +376,8 @@ class Api:
     def save_zotero_item(self, item_json: str) -> str:
         """Save a single Zotero-scanned item to the Agent-Lit database."""
         item = json.loads(item_json)
-        if not item.get("ok") or not item.get("paper"):
-            return json.dumps({"ok": False, "error": "Invalid item"})
-
-        paper = Paper(**item["paper"])
-        # Dedup check
-        dup = None
-        if paper.doi:
-            dup = self._db.get_paper_by_doi(paper.doi)
-        if not dup:
-            dup = self._db.get_paper_by_title(paper.title)
-        if dup:
-            return json.dumps(
-                {"ok": False, "duplicate": True, "existing_id": dup.id,
-                 "error": "Duplicate"}
-            )
-        # Auto-tag
-        paper.auto_tags = _extract_auto_tags(paper)
-        # Import PDF if available
-        pdf_path = item.get("pdf_path")
-        if pdf_path:
-            try:
-                stored = self._pdf_store.import_file(
-                    Path(pdf_path), paper_id=paper.id
-                )
-                paper.pdf_path = str(stored)
-            except Exception:
-                pass  # PDF copy failure is non-fatal
-        self._db.add_paper(paper)
-        return json.dumps({"ok": True, "id": paper.id})
+        result = save_zotero_item(self._db, self._pdf_store, item)
+        return json.dumps(result)
 
     # ── File dialogs ──────────────────────────────────────────
 
@@ -942,243 +846,3 @@ class Api:
 
     def close(self) -> None:
         self._db.close()
-
-
-# ── Auto-tag helpers (module-level) ──────────────────────
-
-def _extract_auto_tags(paper: Paper) -> list[str]:
-    """Extract tags from paper metadata: keywords, venue, abstract."""
-    tags: list[str] = []
-
-    # 1. Paper keywords → direct tags
-    for kw in paper.keywords:
-        tag = _normalize_tag(kw)
-        if tag and tag not in tags:
-            tags.append(tag)
-
-    # 2. Venue → high-level domain tag
-    if paper.venue:
-        venue_tag = _venue_to_tag(paper.venue)
-        if venue_tag and venue_tag not in tags:
-            tags.append(venue_tag)
-
-    # 3. Abstract → extract key phrases via frequency heuristic
-    if paper.abstract:
-        abstract_tags = _extract_from_abstract(paper.abstract)
-        for t in abstract_tags:
-            if t not in tags:
-                tags.append(t)
-
-    return tags[:12]  # cap at 12 tags
-
-
-def _normalize_tag(kw: str) -> str:
-    """Normalize a keyword into a clean tag."""
-    tag = kw.strip().lower()
-    tag = tag.replace(" ", "-")
-    # Remove very short or very long tags
-    if len(tag) < 2 or len(tag) > 40:
-        return ""
-    return tag
-
-
-# Well-known venue → domain mapping
-_VENUE_MAP = {
-    "neurips": "neural-networks",
-    "nips": "neural-networks",
-    "icml": "machine-learning",
-    "iclr": "deep-learning",
-    "aaai": "artificial-intelligence",
-    "ijcai": "artificial-intelligence",
-    "cvpr": "computer-vision",
-    "iccv": "computer-vision",
-    "eccv": "computer-vision",
-    "acl": "natural-language-processing",
-    "emnlp": "natural-language-processing",
-    "naacl": "natural-language-processing",
-    "sigkdd": "data-mining",
-    "kdd": "data-mining",
-    "www": "web-mining",
-    "sigir": "information-retrieval",
-    "icse": "software-engineering",
-    "ase": "software-engineering",
-    "ismir": "music-information-retrieval",
-}
-
-
-def _venue_to_tag(venue: str) -> str | None:
-    """Map a venue name to a domain tag."""
-    v = venue.lower().strip()
-    for key, tag in _VENUE_MAP.items():
-        if key in v:
-            return tag
-    return None
-
-
-# Common academic phrases to ignore in abstract tag extraction
-_IGNORE_WORDS = frozenset({
-    "paper", "propose", "propose", "method", "approach", "result",
-    "show", "use", "using", "used", "based", "propose", "novel",
-    "propose", "also", "however", "study", "propose", "present",
-    "proposed", "propose", "work", "propose", "provide", "introduce",
-    "presented", "propose", "well", "two", "one", "new", "first",
-    "second", "propose", "different", "several", "various", "given",
-    "experimental", "experiments", "evaluation", "performance",
-    "compare", "comparison", "state-of-the-art", "achieve", "obtained",
-    "obtain", "demonstrate", "significant", "significantly",
-    "effective", "efficient", "improve", "improvement",
-})
-
-
-def _extract_from_abstract(abstract: str) -> list[str]:
-    """Extract potential tags from abstract via noun-phrase heuristic."""
-    import re
-
-    # Extract 2-3 word phrases that look like domain terms
-    # Pattern: capitalized phrase or technical term
-    phrases = re.findall(
-        r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b', abstract
-    )
-
-    # Also extract common hyphenated terms
-    hyphenated = re.findall(
-        r'\b([a-z]+-[a-z]+(?:-[a-z]+)*)\b', abstract.lower()
-    )
-
-    tags = []
-    for phrase in phrases:
-        tag = phrase.lower().replace(" ", "-")
-        words = tag.split("-")
-        # Skip if any word is in ignore list or too common
-        if any(w in _IGNORE_WORDS for w in words):
-            continue
-        if 3 <= len(tag) <= 35 and tag not in tags:
-            tags.append(tag)
-
-    for tag in hyphenated:
-        if 3 <= len(tag) <= 35 and tag not in tags:
-            tags.append(tag)
-
-    return tags[:8]
-
-
-# ── BibTeX Parsing ─────────────────────────────────────
-
-def _parse_bibtex(text: str) -> list[dict]:
-    """Parse a BibTeX string into a list of entry dicts."""
-    import re
-
-    entries = []
-    # Match @type{key, ... }
-    for m in re.finditer(
-        r"@(\w+)\s*\{\s*([^,\s]+)\s*,\s*(.*?)\n\s*\}",
-        text,
-        re.DOTALL,
-    ):
-        entry_type = m.group(1).lower()
-        if entry_type in ("comment", "string", "preamble"):
-            continue
-        key = m.group(2)
-        body = m.group(3)
-
-        fields = {"_key": key, "_type": entry_type}
-        # Parse field = {value} or field = "value" or field = number
-        for fm in re.finditer(
-            r"(\w+)\s*=\s*(?:\{(.*?)\}|\"(.*?)\"|(\S+))",
-            body,
-            re.DOTALL,
-        ):
-            fname = fm.group(1).lower()
-            # Value is in one of the three capture groups
-            fval = fm.group(2) or fm.group(3) or fm.group(4) or ""
-            # Remove outer braces (nested brace handling)
-            fval = fval.strip()
-            # Un-escape BibTeX
-            fval = fval.replace("\\&", "&")
-            fields[fname] = fval
-
-        if "title" in fields:
-            entries.append(fields)
-    return entries
-
-
-def _bibtex_authors(author_str: str) -> list:
-    """Parse 'Last, First and Last, First' into Author objects."""
-    from agent_lit.models.author import Author
-
-    if not author_str:
-        return []
-    authors = []
-    for part in re.split(r"\s+and\s+", author_str):
-        part = part.strip()
-        if not part:
-            continue
-        # "Last, First" → explicit first/last names for correct re-export
-        if "," in part:
-            segments = part.split(",", 1)
-            last = segments[0].strip()
-            first = segments[1].strip()
-            authors.append(
-                Author(name=f"{first} {last}".strip(), first_name=first, last_name=last)
-            )
-        else:
-            authors.append(Author(name=part))
-    return authors
-
-
-def _bibtex_int(val: str | None) -> int | None:
-    if not val:
-        return None
-    import re
-    m = re.search(r"\d{4}", val)
-    return int(m.group()) if m else None
-
-
-def _bibtex_keywords(kw_str: str) -> list[str]:
-    """Split 'kw1; kw2, kw3' into a clean list."""
-    if not kw_str:
-        return []
-    # Semicolons first, then commas
-    kws = re.split(r"[;,]", kw_str)
-    return [k.strip() for k in kws if k.strip()]
-
-
-# ── Paper Type Inference ──────────────────────────────
-
-_BIBTEX_TYPE_MAP = {
-    "article": "journal",
-    "inproceedings": "conference",
-    "conference": "conference",
-    "proceedings": "conference",
-    "book": "book",
-    "incollection": "book",
-    "phdthesis": "thesis",
-    "mastersthesis": "thesis",
-    "techreport": "report",
-    "misc": "preprint",
-    "unpublished": "preprint",
-}
-
-_VENUE_TYPE_PATTERNS = [
-    (r"\b(?:conf(?:erence)?|proc(?:eedings)?|symposium|workshop)\b", "conference"),
-    (r"\b(?:journal|trans(?:action)?|letters?|review)\b", "journal"),
-    (r"\b(?:book|chapter|monograph)\b", "book"),
-    (r"\b(?:thesis|dissertation)\b", "thesis"),
-    (r"\b(?:arxiv|preprint)\b", "preprint"),
-]
-
-
-def _bibtex_type(entry_type: str) -> str | None:
-    """Map BibTeX entry type to paper_type."""
-    return _BIBTEX_TYPE_MAP.get(entry_type.lower())
-
-
-def _infer_paper_type(venue: str | None) -> str | None:
-    """Infer paper type from venue name using pattern matching."""
-    if not venue:
-        return None
-    v = venue.lower()
-    for pattern, ptype in _VENUE_TYPE_PATTERNS:
-        if re.search(pattern, v):
-            return ptype
-    return None

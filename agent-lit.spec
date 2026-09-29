@@ -50,7 +50,6 @@ a = Analysis(
         "IPython",
         "notebook",
         "jupyter",
-        "textual",
         "pytest",
         "ruff",
         "pylint",
