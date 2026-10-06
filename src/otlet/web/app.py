@@ -94,7 +94,9 @@ def launch_gui(settings: Settings | None = None) -> None:
         height=800,
         min_size=(900, 600),
         text_select=True,
-        menu=_build_menu(api),
+        # Native menu bar is a pywebview cocoa (macOS) feature — on
+        # Windows/Linux the same actions live in the page UI itself
+        menu=_build_menu(api) if sys.platform == "darwin" else None,
     )
     api.set_window(window)
 

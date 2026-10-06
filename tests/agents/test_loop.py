@@ -23,7 +23,6 @@ from otlet.storage.database import Database
 from otlet.storage.pdf_index import PDFIndex
 from otlet.storage.pdf_store import PDFStore
 
-
 # ── Fakes ───────────────────────────────────────────────────
 
 

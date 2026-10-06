@@ -1,0 +1,32 @@
+name: build-windows
+
+# Windows build: PyInstaller cannot cross-compile from macOS/Linux, so
+# the win64 exe is produced on a Windows runner. Trigger manually, or
+# automatically on version tags (v*). Requires the repo to have a
+# GitHub remote (none configured locally yet).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build (PyInstaller onedir)
+        run: uv run pyinstaller otlet.spec --clean --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Otlet-win64
+          path: dist/otlet/
+          if-no-files-found: error

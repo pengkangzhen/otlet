@@ -8,6 +8,7 @@ from pathlib import Path
 
 import webview
 
+from otlet import platform
 from otlet.agents.chat import ChatAgent
 from otlet.agents.classify import ClassifyAgent
 from otlet.agents.search import SearchAgent
@@ -521,31 +522,28 @@ class Api:
         path = Path(paper.pdf_path).expanduser().resolve()
         if not path.exists():
             return json.dumps({"ok": False, "error": "PDF file not found"})
-        import subprocess
 
-        subprocess.Popen(["open", str(path)])
+        platform.open_path(path)
         return json.dumps({"ok": True})
 
     def reveal_pdf(self, paper_id: str) -> str:
-        """Reveal the paper's PDF in Finder (opens Finder with the file selected)."""
+        """Reveal the paper's PDF in the system file manager (Finder on
+        macOS, Explorer with the file selected on Windows)."""
         paper = self._db.get_paper(paper_id)
         if not paper or not paper.pdf_path:
             return json.dumps({"ok": False, "error": "No PDF available"})
         path = Path(paper.pdf_path).expanduser().resolve()
         if not path.exists():
             return json.dumps({"ok": False, "error": "PDF file not found"})
-        import subprocess
 
-        subprocess.run(["open", "-R", str(path)], check=True)
+        platform.reveal_path(path)
         return json.dumps({"ok": True})
 
     def open_url(self, url: str) -> str:
         """Open an external URL with the system default browser."""
-        import subprocess
-
         if not url.startswith(("http://", "https://")):
             return json.dumps({"ok": False, "error": "Unsupported URL"})
-        subprocess.Popen(["open", url])
+        platform.open_url(url)
         return json.dumps({"ok": True})
 
     def update_paper(self, paper_id: str, fields_json: str) -> str:

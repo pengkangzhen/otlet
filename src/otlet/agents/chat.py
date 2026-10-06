@@ -16,10 +16,9 @@ from collections.abc import Generator
 from otlet.agents.base import AgentBase
 from otlet.agents.core import build_api_messages
 from otlet.agents.loop import (
-    END_DONE,
     END_MAX_STEPS,
-    END_STUCK,
     END_STOPPED,
+    END_STUCK,
     run_turn,
 )
 from otlet.agents.tools import build_tools

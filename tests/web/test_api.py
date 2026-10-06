@@ -257,12 +257,15 @@ def test_reveal_pdf_requires_existing_file(
     d = json.loads(api.reveal_pdf("pr"))
     assert d["ok"] is False
 
-    # Real file → `open -R <path>` invoked
+    # Real file → reveal command invoked (macOS branch pinned: the
+    # command differs per platform, covered by tests/test_platform.py)
     pdf = tmp_path / "real.pdf"
     pdf.write_bytes(b"%PDF-1.4 stub")
     api._db.update_paper_pdf("pr", str(pdf))
     calls: list = []
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: calls.append(a) or True)
+    from otlet import platform as otlet_platform
+    monkeypatch.setattr(otlet_platform, "PLATFORM", "darwin")
     d = json.loads(api.reveal_pdf("pr"))
     assert d["ok"] is True
     assert calls and list(calls[0][0][:2]) == ["open", "-R"]

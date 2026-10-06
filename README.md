@@ -11,14 +11,32 @@
 - 💬 **AI 对话** — 选中论文直接与 AI 对话，快速了解论文内容和方法
 - 🔍 **智能搜索** — 对接 Semantic Scholar API，一键搜索导入文献
 - 🤖 **自动标签** — 离线关键词提取或 LLM 自动为论文生成标签建议
-- 🖥️ **桌面 GUI** — pywebview 原生窗口（无子命令直接启动）
+- 🖥️ **桌面 GUI** — pywebview 原生窗口，macOS / Windows 双平台（无子命令直接启动）
 - ⌨️ **完整 CLI** — 导入/检索/标签/笔记/AI 对话/导出全流程命令行操作
+- 📑 **PDF 全文索引** — FTS5 trigram 逐页索引，中文子串直接搜（`otlet grep`）
 
-## 安装
+## 支持平台与安装
+
+支持 **macOS** 与 **Windows**（CLI 与 GUI 均可双平台运行；Linux 上 GUI 需自装 pywebview Qt 后端）。
 
 ```bash
 uv sync
 ```
+
+pywebview 的平台后端由其自动声明：macOS 拉取 pyobjc（Cocoa），Windows 拉取 pythonnet（WebView2，Win10/11 自带运行时）。
+
+### 桌面应用打包
+
+| 平台 | 命令 | 产物 |
+|------|------|------|
+| macOS | `./build.sh` | `dist/Otlet.app` |
+| Windows | `powershell -File build.ps1` | `dist/Otlet-<版本>-win64.zip`（内含 `otlet.exe`） |
+
+PyInstaller 不支持交叉编译，Windows 版必须在 Windows 机器上打包（或走下述 CI）。
+
+### CI 构建（Windows）
+
+`.github/workflows/build-windows.yml` 在 `windows-latest` 上自动构建 exe 并上传 artifact；打 `v*` 标签或手动触发即可（需要仓库已配置 GitHub 远程）。
 
 ## 快速开始
 
@@ -48,6 +66,10 @@ otlet open <paper_id>                  # 系统默认阅读器打开 PDF
 otlet rm <paper_id>                    # 移入回收站
 otlet trash                            # 回收站：list / restore / purge / empty
 
+# PDF 全文检索（FTS5 trigram，中文子串可搜）
+otlet grep "network design"            # 搜正文：哪篇论文第几页 + 上下文
+otlet index                            # 为存量 PDF 补建逐页全文索引
+
 # 标签
 otlet tag add <paper_id> resilience location   # 打标签（可多个）
 otlet tag remove <paper_id> resilience
@@ -60,6 +82,10 @@ otlet note add <paper_id> "关键基线论文"
 otlet note list <paper_id>
 otlet chat <paper_id>                  # 交互式对话（流式输出，历史按论文保存）
 otlet chat <paper_id> -m "这篇论文的方法是什么？"  # 单次提问
+
+AI 对话运行**工具循环**：模型按需调用 `read_pdf_pages`（单次 ≤8 页，超长页
+可续读）与 `search_library`（全库全文检索）亲自读论文，回答须注明实际读过
+的页码范围，不再截断全文硬塞进提示词。
 
 # 导出与配置
 otlet export -o library.bib            # 导出 BibTeX（--ids 选部分论文）

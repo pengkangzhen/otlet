@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -18,7 +16,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from otlet import __version__
+from otlet import __version__, platform
 from otlet.agents.chat import ChatAgent
 from otlet.agents.classify import ClassifyAgent
 from otlet.agents.search import SearchAgent
@@ -467,15 +465,7 @@ def cmd_open(args, settings: Settings) -> int:
         _error(f"PDF file not found: {path}")
         return 1
 
-    if sys.platform == "darwin":
-        cmd = ["open", str(path)]
-    elif sys.platform.startswith("win"):
-        subprocess.Popen(["cmd", "/c", "start", "", str(path)])
-        console.print(f"[green]✓ Opened[/green] {path}")
-        return 0
-    else:
-        cmd = ["xdg-open", str(path)]
-    subprocess.Popen(cmd)
+    platform.open_path(path)
     console.print(f"[green]✓ Opened[/green] {path}")
     return 0
 

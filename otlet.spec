@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec file for Otlet — macOS desktop app."""
+"""PyInstaller spec file for Otlet — works on macOS and Windows build
+hosts (run build.sh on macOS / build.ps1 on Windows)."""
 
+import sys
 from pathlib import Path
 
 block_cipher = None
@@ -9,6 +11,16 @@ src_dir = Path(SPECPATH) / "src"
 
 # Collect litellm package
 litellm_pkg = Path(__import__("litellm").__file__).parent
+
+# pywebview ships per-platform GUI backends as lazily imported modules
+if sys.platform == "darwin":
+    webview_hiddenimports = ["pywebview.platforms.cocoa"]
+else:
+    webview_hiddenimports = [
+        "pywebview.platforms.winforms",
+        "pywebview.platforms.edgechromium",
+        "clr",  # pythonnet bridge used by the winforms backend
+    ]
 
 a = Analysis(
     [str(src_dir / "otlet" / "cli.py")],
@@ -23,7 +35,7 @@ a = Analysis(
     hiddenimports=[
         "pywebview",
         "pywebview.platforms",
-        "pywebview.platforms.cocoa",
+        *webview_hiddenimports,
         "litellm",
         "pymupdf",
         "fitz",
