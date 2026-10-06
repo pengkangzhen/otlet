@@ -9,8 +9,25 @@ block_cipher = None
 
 src_dir = Path(SPECPATH) / "src"
 
-# Collect litellm package
+# litellm runtime data ONLY (≈5.5 MB): every .json/.yaml in the
+# package (model prices, provider endpoint maps, tokenizer configs —
+# they are scattered across subpackages, e.g. containers/endpoints
+# .json). The package's CODE still comes in through Analysis — the
+# proxy's web UI assets (js/svg/png, ~40 MB) and any .py are excluded
+# so nothing ships twice.
 litellm_pkg = Path(__import__("litellm").__file__).parent
+litellm_datas = [
+    (
+        str(p),
+        # datas targets are DIRECTORIES: put each file into its
+        # package-relative parent dir (litellm/, litellm/containers/, …)
+        str(p.relative_to(litellm_pkg.parent).parent),
+    )
+    for p in litellm_pkg.rglob("*")
+    if p.is_file()
+    and p.suffix in (".json", ".yaml")
+    and "__pycache__" not in p.parts
+]
 
 # pywebview ships per-platform GUI backends as lazily imported modules
 if sys.platform == "darwin":
@@ -27,10 +44,9 @@ a = Analysis(
     pathex=[str(src_dir)],
     binaries=[],
     datas=[
-        # litellm — entire package including JSON configs & tokenizers
-        (str(litellm_pkg), "litellm"),
         # Web UI static files
         (str(src_dir / "otlet" / "web" / "static"), "otlet/web/static"),
+        *litellm_datas,
     ],
     hiddenimports=[
         "pywebview",
@@ -54,6 +70,15 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         "tkinter",
+        # NOTE: litellm's proxy subpackage (~40 MB) cannot be excluded —
+        # litellm's own import chain references it ("No module named
+        # 'litellm.proxy'" at completion time). It rides along in the
+        # compressed PYZ instead.
+        # GUI backends for platforms this build is not targeting (CI
+        # skips installing them; keep the belt-and-braces excludes)
+        "PyQt6",
+        "qtpy",
+        "PySide6",
         "matplotlib",
         "numpy",
         "scipy",

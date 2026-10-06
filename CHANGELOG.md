@@ -2,6 +2,21 @@
 
 工程日志体例：每个版本的条目记**决策理由与验证证据**，不只是清单。
 
+## Unreleased
+
+### 包体瘦身
+- **决策**：litellm 原先以"整包 datas"进包（96 MB 原样复制 + PYZ 代码双份）。
+  改为按扩展名收集全部 `.json/.yaml` 运行期数据（≈5.5 MB，分散在
+  `containers/endpoints.json`、tokenizers 等子包），代码仍走 PYZ 压缩；
+  proxy 的 Web 面板静态资源（js/svg/png ≈40 MB）不进包。
+- **教训**：`excludes` 掉 `litellm.proxy` 会在 completion 时炸
+  "No module named 'litellm.proxy'"（litellm 主链路引用它）——已回退该排除，
+  proxy 代码随 PYZ 压缩保留；PyInstaller datas 的目标是目录而非文件路径。
+- **验收**：本地冻结构建 178 MB；假端点冒烟把错误逼到 HTTP 层
+  （`litellm.Timeout`），证明冻结环境 litellm 全链路 + 数据文件完整；
+  CI 双平台不再安装 PyQt6（`uv sync --no-install-package`）。
+- **新增**：docs/release-checklist.md（真机矩阵检查清单）。
+
 ## 0.1.0-beta.1 (2026-10-06)
 
 首个公开 beta。核心定位：**标签驱动的本地文献管理 + 代码规则化的 AI 声明核查**。

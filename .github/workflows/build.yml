@@ -16,8 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Install dependencies
-        run: uv sync
+      - name: Install dependencies (skip the Linux-only Qt backend)
+        run: >
+          uv sync
+          --no-install-package PyQt6
+          --no-install-package PyQt6-Qt6
+          --no-install-package PyQt6-sip
+          --no-install-package qtpy
       - name: Build (PyInstaller onedir)
         run: uv run pyinstaller otlet.spec --clean --noconfirm
       - name: Package zip
@@ -34,8 +39,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Install dependencies
-        run: uv sync
+      - name: Install dependencies (skip the Linux-only Qt backend)
+        run: >
+          uv sync
+          --no-install-package PyQt6
+          --no-install-package PyQt6-Qt6
+          --no-install-package PyQt6-sip
+          --no-install-package qtpy
       - name: Build .app bundle
         run: bash build.sh
       - name: Package zip
