@@ -8,6 +8,10 @@ __pycache__/
 # Build artifacts (PyInstaller)
 build/
 dist/
+out/
+
+# UI iteration screenshots & scratch exports (repo root only)
+/*.png
 
 # macOS
 .DS_Store
