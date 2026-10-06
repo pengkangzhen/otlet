@@ -5,8 +5,23 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Generator
+from functools import cache
 
-import litellm
+
+@cache
+def _litellm():
+    """Import litellm lazily, pinned to its local model cost map.
+
+    Importing litellm fetches a remote model price list, which blocks
+    ~20s and logs a warning when offline. otlet never reads that map
+    (it only routes chat completions), so force the bundled backup via
+    LITELLM_LOCAL_MODEL_COST_MAP before the import; deferring the import
+    itself keeps every non-LLM command and UI startup free of it.
+    """
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    import litellm
+
+    return litellm
 
 
 class LLMProvider:
@@ -33,7 +48,7 @@ class LLMProvider:
         """Send a chat completion request and return the full response."""
         full_messages = self._build_messages(messages, system)
         kwargs = self._base_kwargs()
-        response = litellm.completion(
+        response = _litellm().completion(
             messages=full_messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -52,7 +67,7 @@ class LLMProvider:
         """Stream chat completion tokens one by one."""
         full_messages = self._build_messages(messages, system)
         kwargs = self._base_kwargs()
-        response = litellm.completion(
+        response = _litellm().completion(
             messages=full_messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -91,7 +106,7 @@ class LLMProvider:
 
         streamed = False
         try:
-            response = litellm.completion(
+            response = _litellm().completion(
                 messages=full_messages, stream=True, **common
             )
             content: list[str] = []
@@ -143,7 +158,7 @@ class LLMProvider:
         self, full_messages: list[dict], common: dict
     ) -> Generator[dict, None, None]:
         """Non-streaming fallback for streaming-with-tools rejection."""
-        response = litellm.completion(
+        response = _litellm().completion(
             messages=full_messages, stream=False, **common
         )
         message = response.choices[0].message
