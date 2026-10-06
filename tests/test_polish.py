@@ -61,6 +61,7 @@ def test_send_chat_message_pushes_events(tmp_path: Path):
     from otlet.web.api import Api
 
     api = Api(Settings(data_dir=tmp_path))
+    api._settings.api_key = "test"  # pass the no-key guidance gate
     api._db.add_paper(Paper(id="p1", title="Stream Paper"))
 
     class FakeChatAgent:
@@ -98,6 +99,7 @@ def test_send_chat_message_without_window_still_returns(
     from otlet.web.api import Api
 
     api = Api(Settings(data_dir=tmp_path))
+    api._settings.api_key = "test"  # pass the no-key guidance gate
     api._db.add_paper(Paper(id="p1", title="Stream Paper"))
 
     class FakeChatAgent:

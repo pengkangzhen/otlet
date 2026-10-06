@@ -374,6 +374,19 @@ class Api:
             except Exception:
                 pass  # page not ready / older frontend: return value covers it
 
+        # No LLM configured → guide instead of a cryptic provider error.
+        # Everything except AI chat works without a key.
+        if not (self._settings.api_key or self._settings.api_base):
+            message = (
+                "尚未配置 AI 模型：打开 设置 → 填写 api_key（或 api_base 指向"
+                "本地模型），也可以在终端运行 `otlet settings set api_key …`。"
+                "导入、检索、全文搜索和声明核查不需要密钥。"
+            )
+            return json.dumps(
+                {"response": message, "end_reason": "no_key"},
+                ensure_ascii=False,
+            )
+
         answer, end_reason = "", "failed"
         for event in self._chat_agent.ask(paper_id, message):
             if event["type"] == "done":

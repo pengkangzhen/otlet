@@ -684,6 +684,12 @@ def cmd_chat(args, settings: Settings) -> int:
     searches the library (search_library) as needed; intermediate tool
     traffic is persisted with the conversation and replayed as context.
     """
+    if not (settings.api_key or settings.api_base):
+        _error(
+            "AI 未配置：`otlet settings set api_key <key>`（本地模型改用 "
+            "api_base）。导入/检索/verify 不需要密钥。"
+        )
+        return 1
     with _open_db(settings) as db:
         paper = db.get_paper(args.paper_id)
         if not paper:

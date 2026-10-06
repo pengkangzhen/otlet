@@ -1,0 +1,66 @@
+name: build
+
+# PyInstaller cannot cross-compile: the win64 exe is built on a Windows
+# runner and the macOS .app on a macOS runner. Pushing a v* tag builds
+# both and publishes them as a GitHub Release with SHA256 checksums.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync
+      - name: Build (PyInstaller onedir)
+        run: uv run pyinstaller otlet.spec --clean --noconfirm
+      - name: Package zip
+        shell: pwsh
+        run: Compress-Archive -Path dist\otlet -DestinationPath dist\Otlet-win64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Otlet-win64
+          path: dist/Otlet-win64.zip
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync
+      - name: Build .app bundle
+        run: bash build.sh
+      - name: Package zip
+        run: cd dist && zip -qry Otlet-macos.app.zip Otlet.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Otlet-macos-app
+          path: dist/Otlet-macos.app.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release_files
+          merge-multiple: true
+      - name: Checksums
+        run: cd release_files && shasum -a 256 * > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release_files/*
+          generate_release_notes: true
