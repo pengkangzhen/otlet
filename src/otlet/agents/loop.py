@@ -93,6 +93,12 @@ def run_turn(
             return
 
         for call in calls:
+            # surface the activity before the (possibly slow) execution
+            yield {
+                "type": "tool",
+                "name": call.name,
+                "detail": _brief(call.name, call.arguments),
+            }
             result, end_reason = _execute_call(
                 call, tools, recent_signatures, should_stop
             )
@@ -118,6 +124,25 @@ def run_turn(
                 return
 
     yield {"type": "result", "answer": "", "end_reason": END_MAX_STEPS}
+
+
+def _brief(name: str, args: dict) -> str:
+    """One-line human summary of a tool call for status displays."""
+    if name == "read_pdf_pages":
+        frm = args.get("from_page", 1)
+        to = args.get("to_page")
+        rng = f"第{frm}–{to}页" if to else f"第{frm}页起"
+        if args.get("from_char"):
+            rng += f" (from char {args['from_char']})"
+        return rng
+    if name == "find_literature":
+        claims = args.get("claims") or []
+        first = str(claims[0])[:40] if claims else "?"
+        more = f" 等{len(claims)}条" if len(claims) > 1 else ""
+        return f"“{first}”{more}"
+    if name == "search_library":
+        return f"“{str(args.get('query', ''))[:40]}”"
+    return json.dumps(args, ensure_ascii=False)[:60]
 
 
 def _execute_call(

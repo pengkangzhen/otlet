@@ -173,6 +173,14 @@ class ChatAgent(AgentBase):
             ):
                 if event["type"] == "delta":
                     yield {"type": "delta", "text": event["text"]}
+                elif event["type"] == "tool":
+                    # tool activity (name + one-line summary) for status
+                    # displays — arrives before the slow execution runs
+                    yield {
+                        "type": "tool",
+                        "name": event["name"],
+                        "detail": event["detail"],
+                    }
                 else:
                     answer = event["answer"]
                     end_reason = event["end_reason"]

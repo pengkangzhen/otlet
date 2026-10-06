@@ -13,6 +13,8 @@
 - 🤖 **自动标签** — 离线关键词提取或 LLM 自动为论文生成标签建议
 - 🖥️ **桌面 GUI** — pywebview 原生窗口，macOS / Windows 双平台（无子命令直接启动）
 - ⌨️ **完整 CLI** — 导入/检索/标签/笔记/AI 对话/导出全流程命令行操作
+- 🖥️ **终端 TUI** — `otlet tui`：列表 + 详情 + 命令行一体（过滤/全文检索/核查/聊天）
+- ✅ **声明核查** — `otlet verify "..."`：supports/partial/none 三档判定（代码规则，不经 LLM）
 - 📑 **PDF 全文索引** — FTS5 trigram 逐页索引，中文子串直接搜（`otlet grep`）
 
 ## 支持平台与安装
@@ -74,6 +76,13 @@ otlet index                            # 为存量 PDF 补建逐页全文索引
 otlet enrich --dry-run                 # 预览将回填的 year/venue/abstract 等
 otlet enrich                           # 实际写入（--ids 选指定论文）
 
+# 声明核查（三档判定由代码规则计算，无需配置 LLM）
+otlet verify "冗余库存能提高供应链韧性" --en "Redundant inventory improves resilience"
+otlet verify "robust optimization handles uncertainty" --year-from 2015
+
+# 终端 TUI（textual：过滤 /全文检索 :v 核查 :c 聊天 :n 笔记 :e 补全）
+otlet tui
+
 # 标签
 otlet tag add <paper_id> resilience location   # 打标签（可多个）
 otlet tag remove <paper_id> resilience
@@ -91,7 +100,9 @@ AI 对话运行**工具循环**：模型按需调用 `read_pdf_pages`（单次 �
 可续读）、`search_library`（全库全文检索）与 `find_literature`（**声明核查**：
 对"有没有文献支持 X"给出 supports/partial/none 三档判定——判定由代码规则计算，
 模型只转述；partial/none 不得包装成"有文献支持"），回答须注明实际读过的页码
-范围，不再截断全文硬塞进提示词。
+范围，不再截断全文硬塞进提示词。三个前端（GUI / CLI / TUI）均**实时流式**
+输出，并显示工具活动（如 `→ read_pdf_pages(第3–5页)…`）；GUI 聊天与搜索框
+已接入逐页全文命中。
 
 # 导出与配置
 otlet export -o library.bib            # 导出 BibTeX（--ids 选部分论文）

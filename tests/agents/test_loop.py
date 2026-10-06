@@ -151,6 +151,11 @@ def test_run_turn_tool_then_answer_persists_in_order():
     assert persisted[1]["tool_call_id"] == "c1"
     assert persisted[1]["tool_name"] == "echo"
     assert json.loads(persisted[1]["content"]) == {"x": 1}
+    # tool activity event is surfaced for status displays
+    tool_events = [e for e in events if e["type"] == "tool"]
+    assert tool_events == [
+        {"type": "tool", "name": "echo", "detail": '{"x": 1}'}
+    ]
 
 
 def test_run_turn_max_steps():

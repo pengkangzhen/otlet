@@ -2819,6 +2819,59 @@ function addChatBubble(role, content) {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
+// ── Chat streaming: backend pushes events via onChatEvent ──
+// {type:"delta",text} {type:"tool",name,detail} {type:"done",answer,end_reason}
+let _chatStream = null;       // {bubble, text, tools} live assistant reply
+let _chatStreamRendered = false;
+
+function _ensureStreamingBubble() {
+  if (_chatStream) return _chatStream;
+  document.getElementById('typingIndicator')?.remove();
+  const chatEl = document.getElementById('chatMessages');
+  const msg = document.createElement('div');
+  msg.className = 'chat-msg assistant';
+  msg.innerHTML = `
+    <div class="chat-avatar"><svg viewBox="0 0 16 16"><path d="M8 1.5 9.6 6.4 14.5 8 9.6 9.6 8 14.5 6.4 9.6 1.5 8 6.4 6.4z"/></svg></div>
+    <div class="chat-bubble"></div>`;
+  chatEl.appendChild(msg);
+  _chatStream = { bubble: msg.querySelector('.chat-bubble'), text: '', tools: [] };
+  const chatBox = document.getElementById('chatMessages');
+  chatBox.scrollTop = chatBox.scrollHeight;
+  return _chatStream;
+}
+
+function _finishStreamingBubble(answer) {
+  const s = _chatStream;
+  _chatStream = null;
+  if (!s) return;
+  const toolLines = s.tools.length
+    ? '<div style="font-size:11px;opacity:.6;margin-top:6px">'
+      + s.tools.map(t => `→ ${t.name}(${esc(String(t.detail))})`).join('<br>')
+      + '</div>' : '';
+  s.bubble.innerHTML = renderMd(answer || '') + toolLines;
+  const chatEl = document.getElementById('chatMessages');
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+window.onChatEvent = function(e) {
+  if (e.type === 'delta') {
+    const s = _ensureStreamingBubble();
+    s.text += e.text;
+    s.bubble.innerHTML = renderMd(s.text) + ' <span class="cursor">▌</span>';
+    const chatEl = document.getElementById('chatMessages');
+    chatEl.scrollTop = chatEl.scrollHeight;
+  } else if (e.type === 'tool') {
+    _ensureStreamingBubble().tools.push(e);
+    document.getElementById('statusText').textContent =
+      `→ ${e.name}(${e.detail})…`;
+  } else if (e.type === 'done') {
+    _chatStreamRendered = true;
+    _finishStreamingBubble(e.answer);
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('statusText').textContent = 'Ready';
+  }
+};
+
 async function sendMessage() {
   if (!selectedPaper) return;
   const input = document.getElementById('chatInput');
@@ -2831,7 +2884,7 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = true;
   document.getElementById('statusText').textContent = 'Thinking...';
 
-  // Show typing indicator
+  // Typing indicator until the first streamed delta replaces it
   const chatEl = document.getElementById('chatMessages');
   const typingMsg = document.createElement('div');
   typingMsg.className = 'chat-msg assistant';
@@ -2843,12 +2896,19 @@ async function sendMessage() {
   chatEl.appendChild(typingMsg);
   chatEl.scrollTop = chatEl.scrollHeight;
 
+  _chatStreamRendered = false;
   try {
     const r = await pywebview.api.send_chat_message(selectedPaper.id, msg);
     const data = JSON.parse(r);
-    document.getElementById('typingIndicator')?.remove();
-    addChatBubble('assistant', data.response);
+    // Streamed mid-flight but never finalized → finalize with the answer
+    if (_chatStream) _finishStreamingBubble(data.response);
+    // No events fired at all (older backend / hiccup) → plain fallback
+    if (!_chatStreamRendered && document.getElementById('typingIndicator')) {
+      document.getElementById('typingIndicator').remove();
+      addChatBubble('assistant', data.response);
+    }
   } catch(e) {
+    _chatStream = null;
     document.getElementById('typingIndicator')?.remove();
     addChatBubble('assistant', 'Error: ' + e.message);
   }
@@ -2856,6 +2916,7 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('statusText').textContent = 'Ready';
 }
+
 
 // ── Filtering: tag filters (sidebar themes + tags, detail-panel tags) ──
 function onTagClick(event, name) {
@@ -3335,8 +3396,25 @@ document.getElementById('searchInput').addEventListener('input', async (e) => {
     _syncWorkspaceTabs();
   }
   searchTimeout = setTimeout(async () => {
-    const r = await pywebview.api.search_papers(q);
-    renderPapers(JSON.parse(r));
+    const [metaR, ftR] = await Promise.all([
+      pywebview.api.search_papers(q),
+      pywebview.api.search_fulltext(q, 8),
+    ]);
+    renderPapers(JSON.parse(metaR));
+    // Full-text hits (which paper, which page) above the metadata matches
+    const hits = JSON.parse(ftR);
+    if (hits.length) {
+      const el = document.getElementById('paperList');
+      const rows = hits.map(h => `
+        <div class="paper-item" onclick="selectPaper('${h.paper_id}', event)" ondblclick="openPdfById('${h.paper_id}')">
+          <div class="paper-title"><span class="title-text">${_hl(h.title)} <span style="opacity:.55;font-size:11px">p.${h.page}</span></span></div>
+          <div class="paper-meta" style="font-size:11px;opacity:.75">${esc(h.snippet)}</div>
+        </div>`).join('');
+      el.insertAdjacentHTML('afterbegin',
+        `<div style="padding:6px 10px;font-size:11px;color:var(--accent);border-bottom:1px solid var(--border)">📄 全文命中 ${hits.length} 处</div>`
+        + rows
+        + `<div style="border-bottom:1px solid var(--border);margin-bottom:4px"></div>`);
+    }
   }, 300);
 });
 

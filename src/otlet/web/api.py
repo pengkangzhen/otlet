@@ -351,15 +351,35 @@ class Api:
         return json.dumps(messages, ensure_ascii=False)
 
     def send_chat_message(self, paper_id: str, message: str) -> str:
-        """Send a chat message; the agent may read PDF pages and search
-        the library through tools before answering (its tool traffic is
-        persisted with the conversation). Returns {"response",
-        "end_reason"}."""
+        """Send a chat message; the agent may read PDF pages, search the
+        library, and verify claims through tools before answering (tool
+        traffic is persisted with the conversation).
+
+        Events stream live into the frontend via
+        ``window.onChatEvent({type, ...})`` when the page defines the
+        handler: {type: "delta", text}, {type: "tool", name, detail},
+        {type: "done", answer, end_reason}. The final result is also
+        returned as JSON {"response", "end_reason"} for frontends
+        without the handler.
+        """
+
+        def push(event: dict) -> None:
+            if self._window is None:
+                return
+            try:
+                payload = json.dumps(event, ensure_ascii=False)
+                self._window.evaluate_js(
+                    f"window.onChatEvent && onChatEvent({payload})"
+                )
+            except Exception:
+                pass  # page not ready / older frontend: return value covers it
+
         answer, end_reason = "", "failed"
         for event in self._chat_agent.ask(paper_id, message):
             if event["type"] == "done":
                 answer = event["answer"]
                 end_reason = event["end_reason"]
+            push(event)
         return json.dumps(
             {"response": answer, "end_reason": end_reason},
             ensure_ascii=False,

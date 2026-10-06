@@ -60,7 +60,7 @@ def _error(msg: str) -> None:
     console.print(f"[red]✗ {msg}[/red]")
 
 
-# ── gui ────────────────────────────────────────────────────
+# ── gui / tui ──────────────────────────────────────────────
 
 
 def cmd_gui(args, settings: Settings) -> int:
@@ -68,6 +68,14 @@ def cmd_gui(args, settings: Settings) -> int:
     from otlet.web.app import launch_gui
 
     launch_gui(settings)
+    return 0
+
+
+def cmd_tui(args, settings: Settings) -> int:
+    """Launch the terminal UI (textual)."""
+    from otlet.tui import OtletTUI
+
+    OtletTUI(settings).run()
     return 0
 
 
@@ -696,16 +704,28 @@ def cmd_chat(args, settings: Settings) -> int:
 
         def ask(message: str) -> None:
             console.print("[bold cyan]otlet›[/bold cyan] ", end="")
+            streamed = False
             try:
                 for event in agent.ask(args.paper_id, message):
                     if event["type"] == "delta":
-                        console.out(event["text"], end="")
-                    elif event["type"] == "done" and (
-                        event["end_reason"] != "done"
-                        or not event["answer"]
-                    ):
-                        # non-streamed outcomes: failure note or stop reason
-                        console.print(event["answer"])
+                        if event["text"]:
+                            streamed = True
+                            console.out(event["text"], end="")
+                    elif event["type"] == "tool":
+                        # tool activity line — new line if mid-stream text
+                        if streamed:
+                            console.print()
+                            streamed = False
+                        console.print(
+                            f"  [dim]→ {event['name']}({event['detail']})"
+                            "...[/dim]"
+                        )
+                    elif event["type"] == "done":
+                        if event["end_reason"] != "done" or not event[
+                            "answer"
+                        ]:
+                            streamed = True  # non-streamed outcome below
+                            console.print(event["answer"])
             except Exception as e:
                 console.print()
                 _error(f"LLM call failed: {e} "
@@ -734,6 +754,72 @@ def cmd_chat(args, settings: Settings) -> int:
                 continue
             ask(question)
         return 0
+
+
+# ── verify (claim checking, no LLM needed) ─────────────────
+
+
+def cmd_verify(args, settings: Settings) -> int:
+    """Check whether literature supports claims — verdicts come from
+    fixed code rules (supports/partial/none), local + OpenAlex + S2."""
+    from otlet.agents.find_literature import run_find_literature
+    from otlet.storage.pdf_index import PDFIndex
+
+    with _open_db(settings) as db:
+        text = args.claims.strip()
+        # multi-sentence input (sentence punctuation present) splits
+        # into claims; a single phrase stays one claim
+        has_sentences = any(c in text for c in ".。!！?？;")
+        result = run_find_literature(
+            db,
+            claims=None if has_sentences else [text],
+            claim_text=text if has_sentences else None,
+            claims_en=[args.en] if args.en else None,
+            year_from=args.year_from,
+            year_to=args.year_to,
+            openalex=OpenAlexClient(mailto=settings.openalex_email),
+            search_agent=SearchAgent(api_key=settings.s2_api_key),
+            pdf_index=PDFIndex(db, PDFStore(settings.pdf_dir)),
+        )
+
+    for note in result["notes"]:
+        console.print(f"[yellow]note:[/yellow] {note}")
+    for item in result["claims"]:
+        verdict = item["verdict"]
+        style = {
+            "supports": "green", "partial": "yellow", "none": "red",
+        }.get(verdict, "white")
+        console.print(
+            f"\n[bold]声明[/bold] {item['claim']}\n"
+            f"判定: [{style}]{verdict}[/{style}]"
+        )
+        if item["evidence"]:
+            table = Table(show_lines=False)
+            table.add_column("Verdict", width=9)
+            table.add_column("Paper", max_width=44)
+            table.add_column("Evidence", max_width=60, overflow="fold")
+            for ev in item["evidence"]:
+                lib = " [cyan](在库内)[/cyan]" if ev["in_library"] else ""
+                table.add_row(
+                    ev["verdict"],
+                    (ev["title"] or "?") + lib,
+                    (ev["evidence_text"] or "")[:200],
+                )
+            console.print(table)
+        if item["recalled_but_not_supporting"]:
+            titles = "; ".join(
+                c["title"] or "?" for c in item[
+                    "recalled_but_not_supporting"
+                ]
+            )
+            console.print(f"[dim]召回但不支撑: {titles}[/dim]")
+    s = result["summary"]
+    console.print(
+        f"\n[bold]小结[/bold]: supported={s['supported']} "
+        f"partial={s['partial']} not_found={s['not_found']} — "
+        "not_found 意为未判定，不等于证伪"
+    )
+    return 0
 
 
 # ── enrich (metadata backfill) ─────────────────────────────
@@ -918,6 +1004,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="Preview fills without writing"
     )
     p_enrich.set_defaults(func=cmd_enrich)
+
+    # verify — claim checking without an LLM
+    p_verify = sub.add_parser(
+        "verify", help="Check whether literature supports a claim "
+                       "(supports/partial/none)"
+    )
+    p_verify.add_argument("claims", help="Claim text (splits on sentence "
+                                         "punctuation)")
+    p_verify.add_argument("--en", help="English variant of the claim "
+                                       "(recommended for Chinese claims)")
+    p_verify.add_argument("--year-from", type=int)
+    p_verify.add_argument("--year-to", type=int)
+    p_verify.set_defaults(func=cmd_verify)
+
+    # tui — terminal user interface
+    p_tui = sub.add_parser("tui", help="Terminal UI (textual)")
+    p_tui.set_defaults(func=cmd_tui)
 
     # add — unified import
     p_add = sub.add_parser(
