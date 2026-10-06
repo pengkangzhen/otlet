@@ -174,6 +174,17 @@ def _locked(func):
     return wrapper
 
 
+class DatabaseCorruptError(RuntimeError):
+    """The library database failed PRAGMA quick_check at open.
+
+    Fail-closed: otlet refuses to run migrations or write anything on
+    top of a damaged file (which could turn a recoverable library into
+    an unrecoverable one). Recovery: restore a snapshot with
+    `otlet restore <archive>`; `.pre-vN.bak` copies next to the file
+    may also hold pre-migration states.
+    """
+
+
 class Database:
     """Manages the SQLite database for otlet."""
 
@@ -181,6 +192,8 @@ class Database:
         self._path = db_path
         self._lock = threading.RLock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        if db_path.exists() and db_path.stat().st_size > 0:
+            self._quick_check()
         try:
             self._conn = sqlite3.connect(
                 str(self._path), check_same_thread=False
@@ -254,6 +267,28 @@ class Database:
             raise RuntimeError(
                 f"SQLite error at {self._path}: {e}"
             ) from e
+
+    def _quick_check(self) -> None:
+        """Fail-closed corruption probe (LitBoard discipline: never
+        build an empty schema on top of a damaged file)."""
+        probe = sqlite3.connect(str(self._path))
+        try:
+            row = probe.execute("PRAGMA quick_check").fetchone()
+        except sqlite3.DatabaseError as e:
+            raise DatabaseCorruptError(
+                f"Library database is damaged: {self._path} ({e}). "
+                "Recover with `otlet restore <archive>` — refusing to "
+                "open or modify the file."
+            ) from e
+        finally:
+            probe.close()
+        if not row or row[0] != "ok":
+            raise DatabaseCorruptError(
+                f"Library database failed integrity check: {self._path} "
+                f"({row[0] if row else 'no result'}). Recover with "
+                "`otlet restore <archive>` — refusing to open or modify "
+                "the file."
+            )
 
     @_locked
     def close(self) -> None:

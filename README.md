@@ -83,6 +83,13 @@ otlet verify "robust optimization handles uncertainty" --year-from 2015
 # 终端 TUI（textual：过滤 /全文检索 :v 核查 :c 聊天 :n 笔记 :e 补全）
 otlet tui
 
+# 快照备份与恢复（校验后发布、保留最近 7 份、恢复不删原文件）
+otlet backup                             # 备份 library.db + 全部 PDF 到 ~/.otlet/backups/
+otlet restore ~/.otlet/backups/otlet-backup-*.zip   # 恢复（现有库改名让位）
+
+# 日志（报障时附上）
+otlet log                                # 查看滚动日志尾部（~/.otlet/logs/otlet.log）
+
 # 标签
 otlet tag add <paper_id> resilience location   # 打标签（可多个）
 otlet tag remove <paper_id> resilience
@@ -203,4 +210,7 @@ uv run --no-sync ruff check .
 
 ## License
 
-MIT
+**AGPL-3.0-or-later**（全文见 [LICENSE](LICENSE)，第三方清单见
+[THIRD-PARTY.md](THIRD-PARTY.md)）。选择 AGPL 是因为核心依赖
+PyMuPDF 为 AGPL-3.0 / Artifex 双许可——分发包含它的构建必须开源。
+本项目走开源社区路线，欢迎 issue 与 PR。

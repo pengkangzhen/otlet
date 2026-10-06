@@ -23,6 +23,7 @@ from otlet.agents.openalex import OpenAlexClient
 from otlet.agents.search import SearchAgent
 from otlet.config.settings import Settings
 from otlet.llm.provider import LLMProvider
+from otlet.logs import install_excepthook, setup_logging
 from otlet.services.importers import (
     entry_to_paper,
     extract_auto_tags,
@@ -31,7 +32,7 @@ from otlet.services.importers import (
     parse_bibtex,
     save_zotero_item,
 )
-from otlet.storage.database import Database
+from otlet.storage.database import Database, DatabaseCorruptError
 from otlet.storage.pdf_metadata import PDFMetadataExtractor
 from otlet.storage.pdf_store import PDFStore
 
@@ -756,6 +757,80 @@ def cmd_chat(args, settings: Settings) -> int:
         return 0
 
 
+# ── backup / restore / log ─────────────────────────────────
+
+
+def cmd_backup(args, settings: Settings) -> int:
+    """Create a verified snapshot (library + PDFs; config excluded)."""
+    from otlet.storage.backup import create_backup
+
+    out_dir = Path(args.out) if args.out else settings.data_dir / "backups"
+    try:
+        archive = create_backup(
+            settings.db_path, settings.pdf_dir, out_dir=out_dir
+        )
+    except Exception as e:
+        _error(f"Backup failed: {e}")
+        return 1
+    console.print(f"[green]✓ Backup written[/green] {archive}")
+    console.print("[dim]Run `otlet backup` regularly — see docs for the "
+                  "7-copy rotation policy.[/dim]")
+    return 0
+
+
+def cmd_restore(args, settings: Settings) -> int:
+    """Restore a backup archive (current library is renamed aside)."""
+    from otlet.storage.backup import restore_archive, verify_archive
+
+    archive = Path(args.archive).expanduser().resolve()
+    if not archive.exists():
+        _error(f"Archive not found: {archive}")
+        return 1
+    try:
+        manifest = verify_archive(archive)
+    except Exception as e:
+        _error(f"Archive verification failed: {e}")
+        return 1
+    console.print(
+        f"Archive OK: {manifest.get('papers')} papers, "
+        f"{len(manifest.get('pdfs', []))} PDFs, "
+        f"created {manifest.get('created_at')}"
+    )
+    if not args.yes and not Confirm.ask(
+        f"Restore over {settings.data_dir}? (current library.db is "
+        "renamed aside, never deleted)"
+    ):
+        return 0
+    try:
+        result = restore_archive(
+            archive, settings.db_path, settings.pdf_dir
+        )
+    except Exception as e:
+        _error(f"Restore failed (rolled back): {e}")
+        return 1
+    console.print(
+        f"[green]✓ Restored[/green] {result['papers']} papers, "
+        f"{result['pdfs']} PDFs. Aside copies: "
+        f"{', '.join(result['moved_aside']) or '(none)'}"
+    )
+    return 0
+
+
+def cmd_log(args, settings: Settings) -> int:
+    """Show the tail of the log file (for bug reports)."""
+    from otlet.logs import log_path
+
+    path = log_path(settings.data_dir)
+    if not path.exists():
+        console.print(f"[yellow]No log yet:[/yellow] {path}")
+        return 0
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in lines[-args.lines:]:
+        console.print(line, highlight=False)
+    console.print(f"[dim]{path}[/dim]")
+    return 0
+
+
 # ── verify (claim checking, no LLM needed) ─────────────────
 
 
@@ -1022,6 +1097,33 @@ def build_parser() -> argparse.ArgumentParser:
     p_tui = sub.add_parser("tui", help="Terminal UI (textual)")
     p_tui.set_defaults(func=cmd_tui)
 
+    # backup / restore / log
+    p_backup = sub.add_parser(
+        "backup", help="Create a verified snapshot (library + PDFs)"
+    )
+    p_backup.add_argument(
+        "--out", help="Backup directory (default: <data_dir>/backups)"
+    )
+    p_backup.set_defaults(func=cmd_backup)
+
+    p_restore = sub.add_parser(
+        "restore", help="Restore a backup archive (current library "
+                        "renamed aside)"
+    )
+    p_restore.add_argument("archive", help="Path to the backup .zip")
+    p_restore.add_argument(
+        "--yes", action="store_true", help="Skip the confirmation prompt"
+    )
+    p_restore.set_defaults(func=cmd_restore)
+
+    p_log = sub.add_parser(
+        "log", help="Show the tail of the log file (for bug reports)"
+    )
+    p_log.add_argument(
+        "--lines", type=int, default=40, help="Lines to show (default 40)"
+    )
+    p_log.set_defaults(func=cmd_log)
+
     # add — unified import
     p_add = sub.add_parser(
         "add", help="Import papers (PDF/DOI/query/BibTeX/folder/Zotero)"
@@ -1132,13 +1234,19 @@ def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> 
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = settings or Settings.load()
+    setup_logging(settings.data_dir)
+    install_excepthook()
     if args.func is None:
         # No subcommand → launch desktop GUI directly
         # (the packaged .app runs this module as its entry script)
         cmd_gui(args, settings)
         return 0
 
-    return args.func(args, settings)
+    try:
+        return args.func(args, settings)
+    except DatabaseCorruptError as e:
+        _error(str(e))
+        return 2
 
 
 if __name__ == "__main__":

@@ -62,7 +62,12 @@ def import_pdf_file(
     data = path.read_bytes()
     fingerprint = hashlib.sha256(data).hexdigest()
 
-    result = extractor.extract(path, data=data)
+    try:
+        result = extractor.extract(path, data=data)
+    except Exception as e:
+        # unparseable/encrypted/corrupt PDF — one bad file must never
+        # abort a batch import
+        return {"ok": False, "error": f"unparseable PDF: {e}"}
     if result.paper is None:
         return {"ok": False, "error": "Could not identify paper"}
 
@@ -87,7 +92,10 @@ def import_pdf_file(
             except Exception:
                 pass
         if attached:
-            PDFIndex(db, pdf_store).build(dup.id)
+            try:
+                PDFIndex(db, pdf_store).build(dup.id)
+            except Exception:
+                pass  # backfillable via `otlet index`
         return {
             "ok": False,
             "duplicate": True,
@@ -111,8 +119,12 @@ def import_pdf_file(
     except Exception as e:
         return {"ok": False, "error": f"Save error: {e}"}
 
-    # Full-text index right away — single imports are cheap to index
-    PDFIndex(db, pdf_store).build(paper.id)
+    # Full-text index right away — single imports are cheap to index;
+    # failure is non-fatal (`otlet index` backfills)
+    try:
+        PDFIndex(db, pdf_store).build(paper.id)
+    except Exception:
+        pass
 
     return {
         "ok": True,
