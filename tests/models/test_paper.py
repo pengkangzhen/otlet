@@ -1,5 +1,5 @@
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
+from otlet.models.author import Author
+from otlet.models.paper import Paper
 
 
 def test_paper_creation():

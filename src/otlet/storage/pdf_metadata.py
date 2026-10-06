@@ -17,8 +17,8 @@ from pathlib import Path
 import httpx
 import pymupdf
 
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
+from otlet.models.author import Author
+from otlet.models.paper import Paper
 
 # DOI regex — covers 10.xxxx/... patterns found in academic PDFs
 _DOI_RE = re.compile(
@@ -55,19 +55,27 @@ class PDFMetadataExtractor:
     def __init__(self, *, s2_api_key: str | None = None) -> None:
         self._s2_api_key = s2_api_key
 
-    def extract(self, pdf_path: Path) -> MetadataResult:
+    def extract(
+        self, pdf_path: Path, *, data: bytes | None = None
+    ) -> MetadataResult:
         """Main entry point — try all strategies to identify the paper.
 
         Args:
             pdf_path: Path to the PDF file.
+            data: Raw PDF bytes, when the caller already read the file
+                (e.g. to compute a dedup fingerprint). Passing them lets
+                the parser work from the same read instead of a second
+                disk access.
 
         Returns:
             MetadataResult with the identified paper (or None if failed).
         """
-        if not pdf_path.exists():
-            return MetadataResult(method="file_not_found")
-
-        doc = pymupdf.open(str(pdf_path))
+        if data is None:
+            if not pdf_path.exists():
+                return MetadataResult(method="file_not_found")
+            doc = pymupdf.open(str(pdf_path))
+        else:
+            doc = pymupdf.open(stream=data, filetype="pdf")
         first_pages_text = self._extract_first_pages(doc, max_pages=3)
         xmp_meta = self._extract_xmp_metadata(doc)
         doc.close()

@@ -1,7 +1,7 @@
 [project]
-name = "agent-lit"
+name = "otlet"
 version = "0.1.0"
-description = "Agent-based literature management software"
+description = "Otlet — agent-based literature management software"
 authors = [
     {name = "pengkangzhen", email = "pengkangzhen@outlook.com"}
 ]
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agent-lit = "agent_lit.cli:main"
+otlet = "otlet.cli:main"
 
 [dependency-groups]
 dev = [
@@ -29,7 +29,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_lit"]
+packages = ["src/otlet"]
 
 [tool.ruff]
 target-version = "py311"

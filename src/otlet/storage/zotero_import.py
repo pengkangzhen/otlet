@@ -8,13 +8,13 @@ import sqlite3
 import uuid
 from pathlib import Path
 
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
+from otlet.models.author import Author
+from otlet.models.paper import Paper
 
 # Default Zotero data directory
 _DEFAULT_ZOTERO_DIR = Path.home() / "Zotero"
 
-# Zotero item type → Agent-Lit paper_type
+# Zotero item type → Otlet paper_type
 _TYPE_MAP = {
     "journalArticle": "journal",
     "conferencePaper": "conference",

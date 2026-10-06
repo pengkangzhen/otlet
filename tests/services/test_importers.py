@@ -5,10 +5,10 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from agent_lit.config.settings import Settings
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
-from agent_lit.services.importers import (
+from otlet.config.settings import Settings
+from otlet.models.author import Author
+from otlet.models.paper import Paper
+from otlet.services.importers import (
     entry_to_paper,
     extract_auto_tags,
     find_duplicate,
@@ -17,9 +17,9 @@ from agent_lit.services.importers import (
     parse_bibtex,
     save_zotero_item,
 )
-from agent_lit.storage.database import Database
-from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
-from agent_lit.storage.pdf_store import PDFStore
+from otlet.storage.database import Database
+from otlet.storage.pdf_metadata import PDFMetadataExtractor
+from otlet.storage.pdf_store import PDFStore
 
 _BIB = """\
 @inproceedings{vaswani2017attention,
@@ -134,6 +134,34 @@ def test_find_duplicate_by_doi_then_title(db: Database):
     assert by_title is not None
 
 
+def test_find_duplicate_resolver_url_doi(db: Database):
+    """A DOI carrying the doi.org resolver prefix is the same paper."""
+    db.add_paper(Paper(title="Original", doi="10.1287/opre.2020.1"))
+    dup = find_duplicate(
+        db, Paper(title="Different", doi="https://doi.org/10.1287/opre.2020.1")
+    )
+    assert dup is not None and dup.doi == "10.1287/opre.2020.1"
+
+
+def test_find_duplicate_by_fingerprint(db: Database):
+    """The file fingerprint outranks metadata: same bytes = same paper,
+    even when every metadata field disagrees."""
+    db.add_paper(
+        Paper(
+            title="Original Title",
+            doi="10.1/x",
+            pdf_fingerprint="a" * 64,
+            pdf_path="/pdfs/p1.pdf",
+        )
+    )
+    dup = find_duplicate(
+        db,
+        Paper(title="Totally Different", doi="10.9/other"),
+        fingerprint="a" * 64,
+    )
+    assert dup is not None and dup.title == "Original Title"
+
+
 def test_find_duplicate_no_match(db: Database):
     assert find_duplicate(db, Paper(title="Brand New")) is None
 
@@ -172,6 +200,35 @@ def test_import_pdf_file_success(
     paper = db.get_paper(result["paper"]["id"])
     assert paper is not None
     assert paper.pdf_path and Path(paper.pdf_path).exists()
+    # The fingerprint is the SHA-256 of the imported file's bytes
+    import hashlib
+    assert paper.pdf_fingerprint == hashlib.sha256(pdf.read_bytes()).hexdigest()
+    # The per-page full-text index was built during import
+    assert db.get_pdf_text(paper.id) is not None
+
+
+def test_import_same_pdf_twice_duplicates_by_fingerprint(
+    db: Database, tmp_path: Path, offline_extractor: PDFMetadataExtractor
+):
+    """The exact same file, under a different name and with failing
+    metadata extraction, is still recognized as a duplicate."""
+    pdf = _make_pdf(
+        tmp_path / "paper.pdf",
+        "Fallback Import Test Paper On Ports\nAbstract: none",
+    )
+    store = PDFStore(tmp_path / "pdfs")
+    first = import_pdf_file(db, store, offline_extractor, pdf)
+    assert first["ok"] is True
+
+    copy = tmp_path / "renamed-copy.pdf"
+    copy.write_bytes(pdf.read_bytes())
+    second = import_pdf_file(db, store, offline_extractor, copy)
+
+    assert second["ok"] is False
+    assert second["duplicate"] is True
+    assert second["existing_id"] == first["paper"]["id"]
+    # Byte-identical file is already stored — nothing to attach
+    assert second["attached"] is False
 
 
 def test_import_pdf_file_duplicate_attaches_pdf(

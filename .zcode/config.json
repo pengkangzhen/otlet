@@ -9,7 +9,7 @@
               "type": "command",
               "command": "bash \"${ZCODE_PROJECT_DIR}/reload.sh\"",
               "timeoutMs": 30000,
-              "statusMessage": "Agent-Lit 改动检测与自动重启"
+              "statusMessage": "Otlet 改动检测与自动重启"
             }
           ]
         }

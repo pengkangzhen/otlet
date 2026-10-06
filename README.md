@@ -1,6 +1,8 @@
-# Agent-Lit
+# Otlet
 
 基于 Agent 的文献管理软件——标签驱动的文献管理 + AI 对话。
+
+> 命名致敬 Paul Otlet（1868–1944，比利时文献学家、信息科学之父）：他在 1930 年代就用卡片分类网络把知识互相链接起来，比万维网早了半个多世纪——这正是本软件想为你做的事。
 
 ## 核心特性
 
@@ -24,53 +26,53 @@ uv sync
 
 ```bash
 # 在线搜索文献（Semantic Scholar）
-agent-lit search "transformer attention" --limit 5
+otlet search "transformer attention" --limit 5
 
 # 导入 —— 六种来源统一走 add 命令
-agent-lit add paper.pdf                    # PDF 文件（自动识别元数据 + 去重）
-agent-lit add ~/Downloads/*.pdf            # 多个 PDF
-agent-lit add --folder ~/papers            # 递归导入文件夹下所有 PDF
-agent-lit add --doi "10.1287/opre.2020.1"  # 通过 DOI
-agent-lit add --query "attention is all you need"  # 在线搜索取第一条
-agent-lit add --bibtex library.bib         # BibTeX 文件（Zotero 导出）
-agent-lit add --zotero                     # 本机 Zotero 库（--collections 1,2 选分类）
-agent-lit add --doi "10.1/x" --auto-tag    # 导入时追加 LLM 标签建议
+otlet add paper.pdf                    # PDF 文件（自动识别元数据 + 去重）
+otlet add ~/Downloads/*.pdf            # 多个 PDF
+otlet add --folder ~/papers            # 递归导入文件夹下所有 PDF
+otlet add --doi "10.1287/opre.2020.1"  # 通过 DOI
+otlet add --query "attention is all you need"  # 在线搜索取第一条
+otlet add --bibtex library.bib         # BibTeX 文件（Zotero 导出）
+otlet add --zotero                     # 本机 Zotero 库（--collections 1,2 选分类）
+otlet add --doi "10.1/x" --auto-tag    # 导入时追加 LLM 标签建议
 
 # 文库管理
-agent-lit list                             # 列出全部文献
-agent-lit list -q "supply chain"           # 本地全文过滤
-agent-lit list --tags resilience,location  # 标签过滤（AND；--any 切 OR）
-agent-lit list --json                      # JSON 输出（供脚本使用）
-agent-lit show <paper_id>                  # 详情：元数据 + 摘要 + 笔记
-agent-lit open <paper_id>                  # 系统默认阅读器打开 PDF
-agent-lit rm <paper_id>                    # 移入回收站
-agent-lit trash                            # 回收站：list / restore / purge / empty
+otlet list                             # 列出全部文献
+otlet list -q "supply chain"           # 本地全文过滤
+otlet list --tags resilience,location  # 标签过滤（AND；--any 切 OR）
+otlet list --json                      # JSON 输出（供脚本使用）
+otlet show <paper_id>                  # 详情：元数据 + 摘要 + 笔记
+otlet open <paper_id>                  # 系统默认阅读器打开 PDF
+otlet rm <paper_id>                    # 移入回收站
+otlet trash                            # 回收站：list / restore / purge / empty
 
 # 标签
-agent-lit tag add <paper_id> resilience location   # 打标签（可多个）
-agent-lit tag remove <paper_id> resilience
-agent-lit tags                             # 标签列表（--auto 含自动标签）
-agent-lit tags rename old-name new-name
-agent-lit autotag <paper_id>               # 离线关键词打标（--method llm 用大模型）
+otlet tag add <paper_id> resilience location   # 打标签（可多个）
+otlet tag remove <paper_id> resilience
+otlet tags                             # 标签列表（--auto 含自动标签）
+otlet tags rename old-name new-name
+otlet autotag <paper_id>               # 离线关键词打标（--method llm 用大模型）
 
 # 笔记与 AI 对话
-agent-lit note add <paper_id> "关键基线论文"
-agent-lit note list <paper_id>
-agent-lit chat <paper_id>                  # 交互式对话（流式输出，历史按论文保存）
-agent-lit chat <paper_id> -m "这篇论文的方法是什么？"  # 单次提问
+otlet note add <paper_id> "关键基线论文"
+otlet note list <paper_id>
+otlet chat <paper_id>                  # 交互式对话（流式输出，历史按论文保存）
+otlet chat <paper_id> -m "这篇论文的方法是什么？"  # 单次提问
 
 # 导出与配置
-agent-lit export -o library.bib            # 导出 BibTeX（--ids 选部分论文）
-agent-lit settings                         # 查看配置（密钥脱敏）
-agent-lit settings set lit_model glm-4.7   # 修改配置（写入 ~/.agent-lit/config.yaml）
+otlet export -o library.bib            # 导出 BibTeX（--ids 选部分论文）
+otlet settings                         # 查看配置（密钥脱敏）
+otlet settings set model glm-4.7   # 修改配置（写入 ~/.otlet/config.yaml）
 
 # 启动桌面 GUI（无子命令时同样默认启动 GUI）
-agent-lit gui
+otlet gui
 ```
 
 ### PDF 智能导入
 
-`agent-lit add <pdf>` 模拟 Zotero 的元数据识别流程：
+`otlet add <pdf>` 模拟 Zotero 的元数据识别流程：
 
 1. **XMP 元数据** → 检查 PDF 内嵌 DOI（置信度 95%）
 2. **文本 DOI** → 正则提取前几页中的 DOI → S2 API 查询（90%）
@@ -83,28 +85,28 @@ agent-lit gui
 
 ## 配置
 
-配置文件位于 `~/.agent-lit/config.yaml`，首次运行自动生成默认配置。
+配置文件位于 `~/.otlet/config.yaml`，首次运行自动生成默认配置。
 
 ```yaml
-data_dir: ~/.agent-lit
-lit_model: gpt-4o-mini          # LLM 模型（支持 OpenAI/Anthropic 等）
-lit_api_key: null                # LLM API Key（也可通过环境变量设置）
-lit_api_base: null               # 自定义 API 地址（用于本地模型）
+data_dir: ~/.otlet
+model: gpt-4o-mini          # LLM 模型（支持 OpenAI/Anthropic 等）
+api_key: null                # LLM API Key（也可通过环境变量设置）
+api_base: null               # 自定义 API 地址（用于本地模型）
 s2_api_key: null                 # Semantic Scholar API Key（可选）
 ```
 
 也可通过环境变量配置：
 ```bash
-export LIT_MODEL="gpt-4o-mini"
-export LIT_API_KEY="sk-..."
-export LIT_API_BASE="https://api.openai.com/v1"
+export OTLET_MODEL="gpt-4o-mini"
+export OTLET_API_KEY="sk-..."
+export OTLET_API_BASE="https://api.openai.com/v1"
 ```
 
 ## 项目结构
 
 ```
-agent-lit/
-├── src/agent_lit/
+otlet/
+├── src/otlet/
 │   ├── agents/          # Agent 模块
 │   │   ├── base.py      # Agent 基类
 │   │   ├── search.py    # 检索 Agent (Semantic Scholar)

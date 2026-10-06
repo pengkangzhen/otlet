@@ -26,10 +26,15 @@ class PDFStore:
 
     def import_file(self, source: Path, *, paper_id: str) -> Path:
         """Copy an existing PDF into the store."""
+        return self.import_bytes(source.read_bytes(), paper_id=paper_id)
+
+    def import_bytes(self, data: bytes, *, paper_id: str) -> Path:
+        """Store raw PDF bytes. Callers that already hold the bytes
+        (e.g. to hash them for dedup) avoid a second file read."""
         dest = self._dir / f"{paper_id}.pdf"
         if dest.exists():
             return dest
-        dest.write_bytes(source.read_bytes())
+        dest.write_bytes(data)
         return dest
 
     def get_path(self, paper_id: str) -> Path | None:

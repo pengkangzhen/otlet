@@ -17,9 +17,9 @@ class LLMProvider:
         api_key: str | None = None,
         api_base: str | None = None,
     ) -> None:
-        self.model = model or os.getenv("LIT_MODEL", "gpt-4o-mini")
-        self.api_key = api_key or os.getenv("LIT_API_KEY")
-        self.api_base = api_base or os.getenv("LIT_API_BASE")
+        self.model = model or os.getenv("OTLET_MODEL", "gpt-4o-mini")
+        self.api_key = api_key or os.getenv("OTLET_API_KEY")
+        self.api_base = api_base or os.getenv("OTLET_API_BASE")
 
     def chat(
         self,

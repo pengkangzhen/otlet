@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
+from otlet.storage.pdf_metadata import PDFMetadataExtractor
 
 
 class TestDOIExtraction:

@@ -3,7 +3,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field, computed_field
 
-from agent_lit.models.author import Author
+from otlet.models.author import Author
 
 
 class Paper(BaseModel):
@@ -29,6 +29,8 @@ class Paper(BaseModel):
     # LLM/heuristic tags, kept out of the manual sidebar
     auto_tags: list[str] = Field(default_factory=list)
     pdf_path: str | None = None
+    # SHA-256 of the stored PDF's bytes — exact-file dedup key
+    pdf_fingerprint: str | None = None
     bibtex_key: str | None = None
     paper_type: str | None = None  # conference/journal/book/thesis/preprint
     deleted_date: str | None = None  # set while the paper is in the trash

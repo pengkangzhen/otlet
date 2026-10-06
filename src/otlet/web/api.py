@@ -8,23 +8,24 @@ from pathlib import Path
 
 import webview
 
-from agent_lit.agents.chat import ChatAgent
-from agent_lit.agents.classify import ClassifyAgent
-from agent_lit.agents.search import SearchAgent
-from agent_lit.config.settings import Settings
-from agent_lit.llm.provider import LLMProvider
-from agent_lit.models.paper import Paper
-from agent_lit.services.importers import (
+from otlet.agents.chat import ChatAgent
+from otlet.agents.classify import ClassifyAgent
+from otlet.agents.search import SearchAgent
+from otlet.config.settings import Settings
+from otlet.llm.provider import LLMProvider
+from otlet.models.paper import Paper
+from otlet.services.importers import (
     entry_to_paper,
     extract_auto_tags,
     import_pdf_file,
     parse_bibtex,
     save_zotero_item,
 )
-from agent_lit.storage.database import Database
-from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
-from agent_lit.storage.pdf_store import PDFStore
-from agent_lit.storage.zotero_import import (
+from otlet.storage.database import Database
+from otlet.storage.pdf_index import PDFIndex
+from otlet.storage.pdf_metadata import PDFMetadataExtractor
+from otlet.storage.pdf_store import PDFStore
+from otlet.storage.zotero_import import (
     find_zotero_db,
     import_from_zotero,
     list_collections,
@@ -42,6 +43,7 @@ class Api:
         self._search_agent = SearchAgent(api_key=settings.s2_api_key)
         self._chat_agent = ChatAgent(self._llm, self._pdf_store)
         self._chat_agent._db = self._db
+        self._pdf_index = PDFIndex(self._db, self._pdf_store)
         self._pdf_extractor = PDFMetadataExtractor(
             s2_api_key=settings.s2_api_key
         )
@@ -66,6 +68,42 @@ class Api:
         """Search papers on Semantic Scholar."""
         papers = self._search_agent.run(query, limit=limit)
         return json.dumps([p.model_dump(mode="json") for p in papers])
+
+    def search_fulltext(self, query: str, limit: int = 50) -> str:
+        """Search inside indexed PDFs: [{paper_id, title, page, snippet}].
+
+        >=3-character queries hit the FTS trigram index; shorter ones
+        fall back to scanning the compressed page texts.
+        """
+        hits = self._pdf_index.search(query, limit=limit)
+        titles = {p.id: p.title for p in self._db.list_papers()}
+        return json.dumps(
+            [
+                {
+                    "paper_id": h["paper_id"],
+                    "title": titles.get(h["paper_id"], h["paper_id"]),
+                    "page": h["page"],
+                    "snippet": h["snippet"],
+                }
+                for h in hits
+            ],
+            ensure_ascii=False,
+        )
+
+    def build_pdf_index(self, paper_id: str | None = None) -> str:
+        """(Re)build the per-page full-text index.
+
+        With paper_id: one paper. Without: every stored PDF that has no
+        index yet (backfill for libraries predating the index).
+        """
+        if paper_id:
+            pages = self._pdf_index.build(paper_id)
+            return json.dumps(
+                {"ok": pages is not None, "pages": pages}
+            )
+        missing = self._db.papers_missing_index()
+        done = sum(1 for pid in missing if self._pdf_index.build(pid))
+        return json.dumps({"ok": True, "indexed": done, "total": len(missing)})
 
     def import_paper(self, paper_json: str) -> str:
         """Import a paper from search results."""
@@ -216,6 +254,42 @@ class Api:
             self._db.set_tag_category(tag_id, category)
         except ValueError as e:
             return json.dumps({"ok": False, "error": str(e)})
+        return json.dumps({"ok": True})
+
+    def list_tags_with_counts(self, include_auto: bool = False) -> str:
+        """Sidebar tag list: [{id, name, is_top, category, color, paper_count}]."""
+        return json.dumps(self._db.list_tags_with_counts(include_auto=include_auto))
+
+    def get_cooccurring_tags(self, tag_id: str, include_auto: bool = False) -> str:
+        """Tags co-occurring with a tag — the derived level under a theme."""
+        if not tag_id:
+            return json.dumps({"ok": False, "error": "Missing tag_id"})
+        return json.dumps(
+            self._db.get_cooccurring_tags(tag_id, include_auto=include_auto)
+        )
+
+    def set_tag_top(self, tag_id: str, is_top: bool) -> str:
+        """Mark or unmark a tag as a top-level theme."""
+        if not tag_id:
+            return json.dumps({"ok": False, "error": "Missing tag_id"})
+        self._db.set_tag_top(tag_id, is_top)
+        return json.dumps({"ok": True})
+
+    def set_tag_parent(self, tag_id: str, parent_id: str | None = None) -> str:
+        """Nest a tag under another (drag-and-drop); None detaches it."""
+        if not tag_id:
+            return json.dumps({"ok": False, "error": "Missing tag_id"})
+        try:
+            self._db.set_tag_parent(tag_id, parent_id or None)
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)})
+        return json.dumps({"ok": True})
+
+    def delete_tag(self, tag_id: str) -> str:
+        """Delete a tag and all its paper links."""
+        if not tag_id:
+            return json.dumps({"ok": False, "error": "Missing tag_id"})
+        self._db.delete_tag(tag_id)
         return json.dumps({"ok": True})
 
     def backfill_affiliations(self) -> str:
@@ -374,7 +448,7 @@ class Api:
         return json.dumps({"ok": True, "total": len(results), "items": results})
 
     def save_zotero_item(self, item_json: str) -> str:
-        """Save a single Zotero-scanned item to the Agent-Lit database."""
+        """Save a single Zotero-scanned item to the Otlet database."""
         item = json.loads(item_json)
         result = save_zotero_item(self._db, self._pdf_store, item)
         return json.dumps(result)
@@ -479,7 +553,7 @@ class Api:
     def update_paper_authors(self, paper_id: str, authors_json: str) -> str:
         """Replace a paper's author list."""
         names = json.loads(authors_json)
-        from agent_lit.models.author import Author
+        from otlet.models.author import Author
 
         self._db.set_paper_authors(paper_id, [Author(name=n) for n in names])
         return json.dumps({"ok": True})
@@ -515,169 +589,13 @@ class Api:
         self._db.rename_tag(old_name, new_name.strip())
         return json.dumps({"ok": True})
 
-    def set_tag_parent(self, tag_name: str, parent_name: str) -> str:
-        """Set a tag's parent theme. Empty parent_name = move to top level."""
-        parent = parent_name.strip() if parent_name else None
-        self._db.set_tag_parent(tag_name, parent)
-        return json.dumps({"ok": True})
-
-    def list_tag_tree(self) -> str:
-        """Return tags as flat list with parent info for tree rendering."""
-        rows = self._db.get_tag_tree()
-        return json.dumps({"ok": True, "tags": rows})
-
     def create_theme(self, name: str) -> str:
-        """Create a top-level theme tag."""
+        """Create a top-level theme tag (is_top=1)."""
         if not name or not name.strip():
             return json.dumps({"ok": False, "error": "Theme name is empty"})
         tag = self._db.create_tag(name.strip())
-        return json.dumps({"ok": True, "name": tag.name})
-
-    def auto_group_tags(self) -> str:
-        """Use co-occurrence to suggest tag groupings."""
-        papers = self._db.list_papers()
-        # Build co-occurrence
-        cooc: dict[tuple[str, str], int] = {}
-        for p in papers:
-            ptags = p.tags or []
-            for i in range(len(ptags)):
-                for j in range(i + 1, len(ptags)):
-                    key = tuple(sorted([ptags[i], ptags[j]]))
-                    cooc[key] = cooc.get(key, 0) + 1
-
-        # Find tag groups via simple clustering
-        tag_counts: dict[str, int] = {}
-        for p in papers:
-            for t in (p.tags or []):
-                tag_counts[t] = tag_counts.get(t, 0) + 1
-
-        # Tags with ≥2 papers are potential themes
-        themes = {t for t, c in tag_counts.items() if c >= 2}
-        # For each rare tag, find the theme it co-occurs most with
-        suggestions: list[dict] = []
-        for tag, count in tag_counts.items():
-            if tag in themes or count >= 2:
-                continue
-            best_theme = None
-            best_score = 0
-            for (a, b), c in cooc.items():
-                if a == tag and b in themes and c > best_score:
-                    best_theme = b
-                    best_score = c
-                elif b == tag and a in themes and c > best_score:
-                    best_theme = a
-                    best_score = c
-            if best_theme:
-                suggestions.append(
-                    {"tag": tag, "theme": best_theme, "cooc": best_score}
-                )
-
-        return json.dumps({
-            "ok": True,
-            "themes": sorted(themes),
-            "suggestions": suggestions,
-        })
-
-    # ── Perspectives ───────────────────────────────────────
-
-    def list_perspectives(self) -> str:
-        return json.dumps({"ok": True, "perspectives": self._db.list_perspectives()})
-
-    def create_perspective(self, name: str) -> str:
-        if not name or not name.strip():
-            return json.dumps({"ok": False, "error": "Name is empty"})
-        p = self._db.create_perspective(name.strip())
-        return json.dumps({"ok": True, **p})
-
-    def delete_perspective(self, perspective_id: str) -> str:
-        if not perspective_id:
-            return json.dumps({"ok": False, "error": "Missing perspective_id"})
-        self._db.delete_perspective(perspective_id)
-        return json.dumps({"ok": True})
-
-    def rename_perspective(self, perspective_id: str, name: str) -> str:
-        if not perspective_id or not name or not name.strip():
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        self._db.rename_perspective(perspective_id, name.strip())
-        return json.dumps({"ok": True})
-
-    # ── Tag Groups ─────────────────────────────────────────
-
-    def list_groups(self, perspective_id: str) -> str:
-        groups = self._db.list_groups(perspective_id)
-        return json.dumps({"ok": True, "groups": groups})
-
-    def create_group(self, perspective_id: str, name: str) -> str:
-        if not perspective_id or not name or not name.strip():
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        g = self._db.create_group(perspective_id, name.strip())
-        return json.dumps({"ok": True, **g})
-
-    def delete_group(self, group_id: str) -> str:
-        if not group_id:
-            return json.dumps({"ok": False, "error": "Missing group_id"})
-        self._db.delete_group(group_id)
-        return json.dumps({"ok": True})
-
-    def rename_group(self, group_id: str, name: str) -> str:
-        if not group_id or not name or not name.strip():
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        self._db.rename_group(group_id, name.strip())
-        return json.dumps({"ok": True})
-
-    # ── Group Membership ───────────────────────────────────
-
-    def add_tag_to_group(self, group_id: str, tag_name: str) -> str:
-        if not group_id or not tag_name:
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        tag = self._db.get_tag_by_name(tag_name)
-        if not tag:
-            tag = self._db.create_tag(tag_name)
-        self._db.add_tag_to_group(group_id, tag.id)
-        return json.dumps({"ok": True})
-
-    def remove_tag_from_group(self, group_id: str, tag_name: str) -> str:
-        if not group_id or not tag_name:
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        tag = self._db.get_tag_by_name(tag_name)
-        if not tag:
-            return json.dumps({"ok": False, "error": "Tag not found"})
-        self._db.remove_tag_from_group(group_id, tag.id)
-        return json.dumps({"ok": True})
-
-    def add_paper_to_group(self, paper_id: str, group_id: str) -> str:
-        """File a paper directly into a project (used after imports)."""
-        if not paper_id or not group_id:
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        self._db.add_paper_to_group(group_id, paper_id)
-        return json.dumps({"ok": True})
-
-    def remove_paper_from_group(self, paper_id: str, group_id: str) -> str:
-        if not paper_id or not group_id:
-            return json.dumps({"ok": False, "error": "Missing parameters"})
-        self._db.remove_paper_from_group(group_id, paper_id)
-        return json.dumps({"ok": True})
-
-    def get_group_papers(self, group_id: str) -> str:
-        """Directly-filed papers of a project: [{paper_id, title}]."""
-        return json.dumps(self._db.get_group_papers(group_id))
-
-    def get_perspective_view(
-        self, perspective_id: str, include_auto: bool = False
-    ) -> str:
-        """Return groups with tags for a perspective."""
-        groups = self._db.get_perspective_view(perspective_id, include_auto)
-        ungrouped = self._db.get_ungrouped_tags(perspective_id, include_auto)
-        return json.dumps({
-            "ok": True,
-            "groups": groups,
-            "ungrouped": ungrouped,
-        })
-
-    def migrate_to_perspectives(self) -> str:
-        """One-time migration from parent_id to perspectives."""
-        msg = self._db.migrate_to_perspectives()
-        return json.dumps({"ok": True, "message": msg})
+        self._db.set_tag_top(tag.id, True)
+        return json.dumps({"ok": True, "id": tag.id, "name": tag.name})
 
     # ── Knowledge Graph ────────────────────────────────────
 
@@ -712,7 +630,7 @@ class Api:
         if paper is None:
             return json.dumps({"ok": False, "error": "Paper not found"})
         if method == "nlp":
-            from agent_lit.storage.keyword_extract import extract_keywords
+            from otlet.storage.keyword_extract import extract_keywords
 
             suggested = extract_keywords(paper.title, paper.abstract)
         else:
@@ -734,14 +652,14 @@ class Api:
 
         return json.dumps({
             "ok": True,
-            "lit_model": self._settings.lit_model,
-            "lit_api_key": mask(self._settings.lit_api_key),
-            "lit_api_base": self._settings.lit_api_base or "",
+            "model": self._settings.model,
+            "api_key": mask(self._settings.api_key),
+            "api_base": self._settings.api_base or "",
             "s2_api_key": mask(self._settings.s2_api_key),
             "theme": self._settings.theme,
             # A configured base URL alone counts: local OpenAI-compatible
             # servers (Ollama, LM Studio, vLLM) don't need an API key
-            "has_llm": bool(self._settings.lit_api_key or self._settings.lit_api_base),
+            "has_llm": bool(self._settings.api_key or self._settings.api_base),
         })
 
     def list_ollama_models(self) -> str:
@@ -761,20 +679,20 @@ class Api:
     def save_settings(self, settings_json: str) -> str:
         """Save LLM settings to config file."""
         data = json.loads(settings_json)
-        if "lit_model" in data:
-            self._settings.lit_model = data["lit_model"]
-        if "lit_api_key" in data and data["lit_api_key"]:
-            self._settings.lit_api_key = data["lit_api_key"]
-        if "lit_api_base" in data:
-            self._settings.lit_api_base = data["lit_api_base"] or None
+        if "model" in data:
+            self._settings.model = data["model"]
+        if "api_key" in data and data["api_key"]:
+            self._settings.api_key = data["api_key"]
+        if "api_base" in data:
+            self._settings.api_base = data["api_base"] or None
         if "s2_api_key" in data and data["s2_api_key"]:
             self._settings.s2_api_key = data["s2_api_key"]
         self._settings.save()
         # Re-init LLM with new settings
         self._llm = LLMProvider(
-            model=self._settings.lit_model,
-            api_key=self._settings.lit_api_key,
-            api_base=self._settings.lit_api_base,
+            model=self._settings.model,
+            api_key=self._settings.api_key,
+            api_base=self._settings.api_base,
         )
         self._chat_agent = ChatAgent(self._llm, self._pdf_store)
         return json.dumps({"ok": True})
@@ -798,10 +716,10 @@ class Api:
         """Export papers to a .bib file.
 
         Exports the whole library by default; pass a JSON array of paper ids
-        to export a single paper or one project's papers. Shows a native
-        save dialog when target_path is empty.
+        to export a single paper or the current tag-filtered selection.
+        Shows a native save dialog when target_path is empty.
         """
-        from agent_lit.storage.bibtex_export import generate_bibtex
+        from otlet.storage.bibtex_export import generate_bibtex
 
         all_papers = self._db.list_papers()
         if paper_ids:

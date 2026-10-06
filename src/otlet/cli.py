@@ -1,7 +1,7 @@
-"""CLI entry point for agent-lit.
+"""CLI entry point for otlet.
 
 Shares every import/dedup/auto-tag rule with the GUI through
-`agent_lit.services.importers`, so both front-ends behave identically.
+`otlet.services.importers`, so both front-ends behave identically.
 """
 
 from __future__ import annotations
@@ -18,13 +18,13 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from agent_lit import __version__
-from agent_lit.agents.chat import ChatAgent
-from agent_lit.agents.classify import ClassifyAgent
-from agent_lit.agents.search import SearchAgent
-from agent_lit.config.settings import Settings
-from agent_lit.llm.provider import LLMProvider
-from agent_lit.services.importers import (
+from otlet import __version__
+from otlet.agents.chat import ChatAgent
+from otlet.agents.classify import ClassifyAgent
+from otlet.agents.search import SearchAgent
+from otlet.config.settings import Settings
+from otlet.llm.provider import LLMProvider
+from otlet.services.importers import (
     entry_to_paper,
     extract_auto_tags,
     find_duplicate,
@@ -32,9 +32,9 @@ from agent_lit.services.importers import (
     parse_bibtex,
     save_zotero_item,
 )
-from agent_lit.storage.database import Database
-from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
-from agent_lit.storage.pdf_store import PDFStore
+from otlet.storage.database import Database
+from otlet.storage.pdf_metadata import PDFMetadataExtractor
+from otlet.storage.pdf_store import PDFStore
 
 console = Console()
 
@@ -66,7 +66,7 @@ def _error(msg: str) -> None:
 
 def cmd_gui(args, settings: Settings) -> int:
     """Launch the desktop GUI application."""
-    from agent_lit.web.app import launch_gui
+    from otlet.web.app import launch_gui
 
     launch_gui(settings)
     return 0
@@ -102,8 +102,8 @@ def cmd_search(args, settings: Settings) -> int:
         )
     console.print(table)
     console.print(
-        "[dim]Import with: agent-lit add --doi <DOI> "
-        "or agent-lit add --query \"...\"[/dim]"
+        "[dim]Import with: otlet add --doi <DOI> "
+        "or otlet add --query \"...\"[/dim]"
     )
     return 0
 
@@ -114,9 +114,9 @@ def cmd_search(args, settings: Settings) -> int:
 def _llm_classify(settings: Settings, paper) -> list[str]:
     """Ask the configured LLM for tag suggestions (may fail offline)."""
     llm = LLMProvider(
-        model=settings.lit_model,
-        api_key=settings.lit_api_key,
-        api_base=settings.lit_api_base,
+        model=settings.model,
+        api_key=settings.api_key,
+        api_base=settings.api_base,
     )
     return ClassifyAgent(llm).run(paper)
 
@@ -224,7 +224,7 @@ def cmd_add(args, settings: Settings) -> int:
                     _print_pdf_import_result(result, pdf)
 
         if args.zotero:
-            from agent_lit.storage.zotero_import import (
+            from otlet.storage.zotero_import import (
                 find_zotero_db,
                 import_from_zotero,
             )
@@ -298,6 +298,70 @@ def cmd_add(args, settings: Settings) -> int:
                 "--doi / --query / --bibtex / --folder / --zotero.[/dim]"
             )
         return rc
+
+
+# ── full-text search / index backfill ──────────────────────
+
+
+def cmd_grep(args, settings: Settings) -> int:
+    """Search inside indexed PDFs: which paper, which page, what context."""
+    from otlet.storage.pdf_index import PDFIndex
+
+    with _open_db(settings) as db:
+        index = PDFIndex(db, PDFStore(settings.pdf_dir))
+        hits = index.search(args.query, limit=args.limit)
+        if not hits:
+            console.print("[yellow]No full-text matches.[/yellow] "
+                          "(Run `otlet index` to index stored PDFs.)")
+            return 0
+        titles = {
+            p.id: p.title
+            for p in db.list_papers()
+        }
+
+    table = Table(
+        title=f"Full-text: {args.query} ({len(hits)} pages)", show_lines=True
+    )
+    table.add_column("Paper", style="bold", max_width=42)
+    table.add_column("Page", justify="right", width=5)
+    table.add_column("Context", max_width=60)
+    for h in hits:
+        table.add_row(
+            f"{titles.get(h['paper_id'], h['paper_id'])} "
+            f"[dim]({h['paper_id']})[/dim]",
+            str(h["page"]),
+            h["snippet"],
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_index(args, settings: Settings) -> int:
+    """Build the per-page full-text index for stored PDFs missing one."""
+    from otlet.storage.pdf_index import PDFIndex
+
+    with _open_db(settings) as db:
+        index = PDFIndex(db, PDFStore(settings.pdf_dir))
+        missing = db.papers_missing_index()
+        if not missing:
+            console.print("[green]✓ All stored PDFs are already indexed.[/green]")
+            return 0
+        rebuilt, failed = 0, 0
+        for i, paper_id in enumerate(missing, 1):
+            try:
+                pages = index.build(paper_id)
+            except Exception as e:
+                failed += 1
+                console.print(f"[red]✗[/red] {paper_id}: {e}")
+                continue
+            rebuilt += 1
+            console.print(f"[green]✓[/green] {paper_id}: {pages} pages "
+                          f"[dim]({i}/{len(missing)})[/dim]")
+        console.print(
+            f"Indexed {rebuilt} paper(s)"
+            + (f", {failed} failed" if failed else "")
+        )
+    return 0
 
 
 # ── list / show / open ─────────────────────────────────────
@@ -451,7 +515,7 @@ def cmd_trash(args, settings: Settings) -> int:
 
         if args.action == "restore":
             if not args.paper_id:
-                _error("Usage: agent-lit trash restore <paper_id>")
+                _error("Usage: otlet trash restore <paper_id>")
                 return 1
             # get_paper() only sees live rows — look the title up in the trash
             title = next(
@@ -464,7 +528,7 @@ def cmd_trash(args, settings: Settings) -> int:
 
         if args.action == "purge":
             if not args.paper_id:
-                _error("Usage: agent-lit trash purge <paper_id>")
+                _error("Usage: otlet trash purge <paper_id>")
                 return 1
             if not args.yes and not Confirm.ask(
                 "Permanently delete this paper (and its PDF file)?"
@@ -555,7 +619,7 @@ def cmd_autotag(args, settings: Settings) -> int:
             return 1
 
         if args.method == "nlp":
-            from agent_lit.storage.keyword_extract import extract_keywords
+            from otlet.storage.keyword_extract import extract_keywords
 
             suggested = extract_keywords(paper.title, paper.abstract)
         else:
@@ -563,7 +627,7 @@ def cmd_autotag(args, settings: Settings) -> int:
                 suggested = _llm_classify(settings, paper)
             except Exception as e:
                 _error(f"LLM auto-tag failed: {e} "
-                       "(configure via `agent-lit settings set`, "
+                       "(configure via `otlet settings set`, "
                        "or use --method nlp)")
                 return 1
 
@@ -622,9 +686,9 @@ def cmd_chat(args, settings: Settings) -> int:
             return 1
 
         llm = LLMProvider(
-            model=settings.lit_model,
-            api_key=settings.lit_api_key,
-            api_base=settings.lit_api_base,
+            model=settings.model,
+            api_key=settings.api_key,
+            api_base=settings.api_base,
         )
         agent = ChatAgent(llm, PDFStore(settings.pdf_dir))
         agent._db = db
@@ -638,7 +702,7 @@ def cmd_chat(args, settings: Settings) -> int:
             messages = [
                 {"role": m["role"], "content": m["content"]} for m in history
             ]
-            console.print("[bold cyan]agent›[/bold cyan] ", end="")
+            console.print("[bold cyan]otlet›[/bold cyan] ", end="")
             try:
                 answer = ""
                 for chunk in agent.stream(args.paper_id, messages):
@@ -647,7 +711,7 @@ def cmd_chat(args, settings: Settings) -> int:
             except Exception as e:
                 console.print()
                 _error(f"LLM call failed: {e} "
-                       "(configure via `agent-lit settings set`)")
+                       "(configure via `otlet settings set`)")
                 return
             console.print("\n")
             db.add_message(conv_id, "assistant", answer)
@@ -680,7 +744,7 @@ def cmd_chat(args, settings: Settings) -> int:
 
 def cmd_export(args, settings: Settings) -> int:
     """Export the library (or selected papers) to a BibTeX file."""
-    from agent_lit.storage.bibtex_export import generate_bibtex
+    from otlet.storage.bibtex_export import generate_bibtex
 
     with _open_db(settings) as db:
         papers = db.list_papers()
@@ -703,25 +767,25 @@ def _mask(secret: str | None) -> str:
 
 
 def cmd_settings(args, settings: Settings) -> int:
-    """Show or update settings stored in ~/.agent-lit/config.yaml."""
+    """Show or update settings stored in ~/.otlet/config.yaml."""
     if args.action in (None, "show"):
-        config_path = Path.home() / ".agent-lit" / "config.yaml"
+        config_path = Settings.config_path()
         table = Table(title=f"Settings ({config_path})")
         table.add_column("Key", style="bold")
         table.add_column("Value")
-        table.add_row("lit_model", settings.lit_model)
+        table.add_row("model", settings.model)
         table.add_row(
-            "lit_api_key", _mask(settings.lit_api_key) or "[dim]<unset>[/dim]"
+            "api_key", _mask(settings.api_key) or "[dim]<unset>[/dim]"
         )
         table.add_row(
-            "lit_api_base", settings.lit_api_base or "[dim]<unset>[/dim]"
+            "api_base", settings.api_base or "[dim]<unset>[/dim]"
         )
         table.add_row("s2_api_key", _mask(settings.s2_api_key) or "[dim]<unset>[/dim]")
         table.add_row("theme", settings.theme)
         table.add_row("data_dir", str(settings.data_dir))
         console.print(table)
         console.print(
-            "[dim]Change with: agent-lit settings set <key> <value>[/dim]"
+            "[dim]Change with: otlet settings set <key> <value>[/dim]"
         )
         return 0
 
@@ -739,8 +803,6 @@ def cmd_settings(args, settings: Settings) -> int:
         except ValueError:
             _error("default_limit must be an integer")
             return 1
-    if key == "data_dir":
-        value = str(Path(value).expanduser())
     if key == "theme":
         valid_themes = ("light", "dark", "classic-light", "classic-dark")
         if value not in valid_themes:
@@ -757,8 +819,8 @@ def cmd_settings(args, settings: Settings) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="agent-lit",
-        description="Agent-based literature management",
+        prog="otlet",
+        description="Otlet — agent-based literature management",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
@@ -775,6 +837,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("query", help="Search query")
     p_search.add_argument("--limit", type=int, default=10)
     p_search.set_defaults(func=cmd_search)
+
+    # grep / index — per-page PDF full-text search
+    p_grep = sub.add_parser(
+        "grep", help="Search inside stored PDFs (paper + page + context)"
+    )
+    p_grep.add_argument("query", help="Text to find (>=3 chars uses the index)")
+    p_grep.add_argument("--limit", type=int, default=50, help="Max page hits")
+    p_grep.set_defaults(func=cmd_grep)
+
+    p_index = sub.add_parser(
+        "index", help="Build the full-text index for stored PDFs missing one"
+    )
+    p_index.set_defaults(func=cmd_index)
 
     # add — unified import
     p_add = sub.add_parser(
@@ -885,13 +960,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    settings = settings or Settings.load()
     if args.func is None:
         # No subcommand → launch desktop GUI directly
         # (the packaged .app runs this module as its entry script)
-        cmd_gui(args, settings or Settings.load())
+        cmd_gui(args, settings)
         return 0
 
-    return args.func(args, settings or Settings.load())
+    return args.func(args, settings)
 
 
 if __name__ == "__main__":

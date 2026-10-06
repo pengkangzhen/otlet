@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Agent-Lit is a macOS desktop app for academic literature management. It features a pywebview-based GUI, SQLite storage, PDF metadata extraction, multi-source import, AI chat, a multi-perspective tag system, and an interactive knowledge graph.
+Otlet is a macOS desktop app for academic literature management. It features a pywebview-based GUI, SQLite storage, PDF metadata extraction, multi-source import, AI chat, a multi-perspective tag system, and an interactive knowledge graph.
 
 ## Build & Run Commands
 
@@ -13,22 +13,22 @@ Agent-Lit is a macOS desktop app for academic literature management. It features
 uv sync
 
 # Run GUI directly (development)
-uv run --no-sync python -m agent_lit.web.app
+uv run --no-sync python -m otlet.web.app
 
 # Run CLI commands
-uv run --no-sync agent-lit list
-uv run --no-sync agent-lit add paper.pdf            # PDF / --doi / --query / --bibtex / --folder / --zotero
-uv run --no-sync agent-lit list -q "text" --tags a,b
-uv run --no-sync agent-lit show <paper_id>
-uv run --no-sync agent-lit chat <paper_id>          # AI 对话（-m 单次提问）
+uv run --no-sync otlet list
+uv run --no-sync otlet add paper.pdf            # PDF / --doi / --query / --bibtex / --folder / --zotero
+uv run --no-sync otlet list -q "text" --tags a,b
+uv run --no-sync otlet show <paper_id>
+uv run --no-sync otlet chat <paper_id>          # AI 对话（-m 单次提问）
 
 # Build macOS .app bundle
 ./build.sh
-# Output: dist/agent-lit/ (onedir), dist/Agent-Lit.app
+# Output: dist/otlet/ (onedir), dist/Otlet.app
 
 # Dev auto-reload (also runs automatically via ZCode Stop hook)
 bash reload.sh
-# Logs: /tmp/agent-lit-reload.log; state: .reload-stamp (delete to force full rebuild)
+# Logs: /tmp/otlet-reload.log; state: .reload-stamp (delete to force full rebuild)
 
 # Lint
 uv run --no-sync ruff check .
@@ -41,9 +41,9 @@ uv run --no-sync pytest tests/storage/test_database.py::test_name  # single test
 
 ## Dev Auto-Reload (ZCode Stop Hook)
 
-A project-level Stop hook (`.zcode/config.json`) runs `reload.sh` after every agent reply. It detects source changes newer than `.reload-stamp` and syncs `dist/Agent-Lit.app` automatically:
+A project-level Stop hook (`.zcode/config.json`) runs `reload.sh` after every agent reply. It detects source changes newer than `.reload-stamp` and syncs `dist/Otlet.app` automatically:
 
-- **index.html-only change** → hot-patches the bundled copy inside the .app (the app loads it from disk at `Contents/MacOS/_internal/agent_lit/web/static/`) and relaunches instantly.
+- **index.html-only change** → hot-patches the bundled copy inside the .app (the app loads it from disk at `Contents/MacOS/_internal/otlet/web/static/`) and relaunches instantly.
 - **Any other change** (py / spec / assets / pyproject) → `reload-build.sh` runs `build.sh` in the background (serialized via a mkdir lock; stamp touched only on success so failed builds retry) and relaunches when done.
 - **No changes** → silent exit.
 
@@ -56,17 +56,17 @@ Implication for agents: after finishing a feature you normally do NOT need to ru
 - **CLI (full feature parity for management tasks)**: `cli.py` with argparse subcommands (add/list/show/open/rm/trash/tag/tags/autotag/note/chat/search/export/settings/gui). `cli.py` is also the PyInstaller entry script — **running with no subcommand must keep launching the GUI** or the packaged .app breaks.
 - Both front-ends share the import pipeline through `services/importers.py` (dedup, auto-tag extraction, BibTeX parsing, paper-type inference, PDF/Zotero import flows). Never reimplement these rules in one front-end only.
 
-### Backend Layers (`src/agent_lit/`)
+### Backend Layers (`src/otlet/`)
 - **`services/importers.py`** — Import pipelines shared by GUI and CLI: `find_duplicate()` (DOI case-insensitive → fuzzy title), `import_pdf_file()`, `save_zotero_item()`, `parse_bibtex()`/`entry_to_paper()`, `extract_auto_tags()` (deterministic, keywords+venue+abstract), `infer_paper_type()`.
 - **`web/api.py`** — The single pywebview-exposed API class. Every JS→Python call goes through here. Thin controller: import flows delegate to `services/importers.py`.
 - **`web/app.py`** — Creates the pywebview window and native macOS menu bar (`Menu("__app__")`, `"File"`, `"Tags"`, `"View"`). Menu callbacks use `window.evaluate_js()` via late-binding through `api._window`.
 - **`storage/database.py`** — SQLite (WAL mode). Manages papers, tags, authors, conversations, **perspectives**, **tag groups**, and **group membership**. All tag names are normalized to lowercase-hyphenated on create/link. Includes `get_knowledge_graph()` for graph data extraction.
 - **`storage/pdf_metadata.py`** — 6-layer PDF identification pipeline: XMP DOI → text DOI → ArXiv ID → XMP title → heuristic title → text fallback.
-- **`storage/pdf_store.py`** — Copies PDFs into `~/.agent-lit/pdfs/{paper_id}.pdf`, extracts text via PyMuPDF.
+- **`storage/pdf_store.py`** — Copies PDFs into `~/.otlet/pdfs/{paper_id}.pdf`, extracts text via PyMuPDF.
 - **`storage/zotero_import.py`** — Reads Zotero's `zotero.sqlite` (temp copy to avoid lock). Two-phase: scan → save-item-by-item for progress.
 - **`agents/`** — `SearchAgent` (Semantic Scholar API), `ChatAgent` (LLM + PDF text + metadata), `ClassifyAgent` (LLM tag suggestion). All inherit from `AgentBase`.
-- **`llm/provider.py`** — Thin litellm wrapper. Config via `~/.agent-lit/config.yaml` or env vars `LIT_MODEL`, `LIT_API_KEY`, `LIT_API_BASE`.
-- **`config/settings.py`** — Pydantic Settings model with `.load()` / `.save()` for YAML persistence. Auto-creates `~/.agent-lit/` directory.
+- **`llm/provider.py`** — Thin litellm wrapper. Config via `~/.otlet/config.yaml` or env vars `OTLET_MODEL`, `OTLET_API_KEY`, `OTLET_API_BASE`.
+- **`config/settings.py`** — Pydantic Settings model with `.load()` / `.save()` for YAML persistence. Auto-creates `~/.otlet/` directory.
 
 ### Frontend (`web/static/index.html`)
 Single HTML file containing all CSS, HTML, and JS. Key patterns:
@@ -82,13 +82,13 @@ Single HTML file containing all CSS, HTML, and JS. Key patterns:
 ```
 index.html (JS) → pywebview.api → Api class (api.py) → Database / Agents / PDFStore
                                                   ↓
-                                            SQLite (~/.agent-lit/library.db)
-                                            PDFs   (~/.agent-lit/pdfs/)
-                                            Config (~/.agent-lit/config.yaml)
+                                            SQLite (~/.otlet/library.db)
+                                            PDFs   (~/.otlet/pdfs/)
+                                            Config (~/.otlet/config.yaml)
 ```
 
 ### PyInstaller Packaging
-- `agent-lit.spec`: builds in **onedir** mode with `console=False`. No AppleScript wrapper.
+- `otlet.spec`: builds in **onedir** mode with `console=False`. No AppleScript wrapper.
 - `build.sh`: runs PyInstaller, creates standard `.app` bundle structure (`Contents/MacOS/` for executable + `_internal/`, `Contents/Frameworks/` as symlink to `MacOS/_internal/`, `Contents/Resources/AppIcon.icns`). Reads version from `pyproject.toml`.
 - litellm is bundled as a full data directory (needed for runtime config loading).
 

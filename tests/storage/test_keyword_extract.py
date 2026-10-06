@@ -2,7 +2,7 @@
 
 import re
 
-from agent_lit.storage.keyword_extract import extract_keywords
+from otlet.storage.keyword_extract import extract_keywords
 
 ABSTRACT = (
     "We propose a two-stage stochastic programming model for supply chain "

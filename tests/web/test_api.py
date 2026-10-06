@@ -7,9 +7,9 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from agent_lit.config.settings import Settings
-from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
-from agent_lit.web.api import Api
+from otlet.config.settings import Settings
+from otlet.storage.pdf_metadata import PDFMetadataExtractor
+from otlet.web.api import Api
 
 
 @pytest.fixture()
@@ -69,10 +69,27 @@ def test_import_pdf_base64_duplicate_detected(api: Api, tmp_path: Path):
     assert second["existing_id"] == first["paper"]["id"]
 
 
-def test_duplicate_drop_attaches_pdf_and_group_filing(api: Api, tmp_path: Path):
-    """A duplicate drop must attach its PDF to the existing paper, and papers
-    can be filed directly into a project (group_papers) and show up in the
-    perspective view."""
+def test_search_fulltext_after_import(api: Api, tmp_path: Path):
+    """Import builds the per-page index; search_fulltext locates the page."""
+    pdf = _pdf_bytes(
+        tmp_path / "paper.pdf",
+        "Resilience Gamma Keyword Paper\nAbstract: none",
+    )
+    b64 = base64.b64encode(pdf).decode()
+    result = json.loads(api.import_pdf_base64("paper.pdf", b64))
+    assert result["ok"] is True
+
+    hits = json.loads(api.search_fulltext("Gamma Keyword"))
+    assert hits and hits[0]["paper_id"] == result["paper"]["id"]
+    assert hits[0]["page"] == 1
+    assert hits[0]["title"].startswith("Resilience")
+
+    assert json.loads(api.search_fulltext("no-such-phrase-zz")) == []
+
+
+def test_duplicate_drop_attaches_pdf_and_cooccurring_view(api: Api, tmp_path: Path):
+    """A duplicate drop must attach its PDF to the existing paper; the
+    sidebar view exposes theme tags and their co-occurring tags."""
     pdf = _pdf_bytes(
         tmp_path / "paper.pdf",
         "Attach On Duplicate Test Paper\nAbstract: none",
@@ -89,24 +106,53 @@ def test_duplicate_drop_attaches_pdf_and_group_filing(api: Api, tmp_path: Path):
     stored = api._db.get_paper(first["paper"]["id"])
     assert stored.pdf_path  # PDF now attached to the existing paper
 
-    # Project filing: perspective view exposes paper_ids for the group
-    pid = json.loads(api.create_perspective("Default"))["id"]
-    gid = json.loads(api.create_group(pid, "Project A"))["id"]
+    # Sidebar: theme tags sort first in list_tags_with_counts, and a theme's
+    # co-occurring tags come back via get_cooccurring_tags
     paper_id = first["paper"]["id"]
-    assert json.loads(api.add_paper_to_group(paper_id, gid))["ok"] is True
+    api._db.add_tag_to_paper(paper_id, "空箱调运", source="manual")
+    api._db.add_tag_to_paper(paper_id, "机会约束", source="manual")
+    theme = api._db.get_tag_by_name("空箱调运")
+    assert json.loads(api.set_tag_top(theme.id, True))["ok"] is True
 
-    view = json.loads(api.get_perspective_view(pid))["groups"]
-    assert view[0]["paper_ids"] == [paper_id]
-    assert api._db.get_group_papers(gid)[0]["paper_id"] == paper_id
+    rows = json.loads(api.list_tags_with_counts())
+    assert rows[0]["name"] == "空箱调运"
+    assert rows[0]["is_top"] == 1
 
-    api.remove_paper_from_group(paper_id, gid)
-    assert api._db.get_group_papers(gid) == []
+    co = json.loads(api.get_cooccurring_tags(theme.id))
+    assert co[0]["name"] == "机会约束"
+
+
+def test_set_tag_parent_endpoint(api: Api):
+    """Drag-to-nest via the bridge: attach, reject cycles, detach."""
+    from otlet.models.paper import Paper
+
+    api._db.add_paper(Paper(id="p1", title="A"))
+    api._db.add_tag_to_paper("p1", "空箱调运", source="manual")
+    api._db.add_tag_to_paper("p1", "heuristic", source="manual")
+    api._db.add_tag_to_paper("p1", "智能优化算法", source="manual")
+    theme = api._db.get_tag_by_name("空箱调运")
+    heur = api._db.get_tag_by_name("heuristic")
+    opt = api._db.get_tag_by_name("智能优化算法")
+
+    assert json.loads(api.set_tag_parent(heur.id, opt.id))["ok"] is True
+    assert json.loads(api.set_tag_parent(opt.id, theme.id))["ok"] is True
+    assert api._db.get_tag(heur.id).parent_id == opt.id
+    assert api._db.get_tag(opt.id).parent_id == theme.id
+
+    # Cycle (theme sits above opt) and missing tag are rejected, not raised
+    assert json.loads(api.set_tag_parent(theme.id, heur.id))["ok"] is False
+    assert json.loads(api.set_tag_parent("nope", opt.id))["ok"] is False
+    assert json.loads(api.set_tag_parent(""))["ok"] is False
+
+    # Detach with None (frontend passes null for a drop on empty sidebar)
+    assert json.loads(api.set_tag_parent(heur.id, None))["ok"] is True
+    assert api._db.get_tag(heur.id).parent_id is None
 
 
 def test_auto_tag_paper_links_auto_tags(api: Api, monkeypatch: pytest.MonkeyPatch):
     """auto_tag_paper stores LLM suggestions as auto-source tag links."""
-    from agent_lit.agents.classify import ClassifyAgent
-    from agent_lit.models.paper import Paper
+    from otlet.agents.classify import ClassifyAgent
+    from otlet.models.paper import Paper
 
     api._db.add_paper(Paper(id="p1", title="Resilience", abstract="port resilience"))
 
@@ -154,7 +200,7 @@ def test_open_file_dialog_multi_select_returns_paths_array(api: Api, tmp_path: P
 
 def test_export_bibtex_subset_writes_only_selected_papers(api: Api, tmp_path: Path):
     """paper_ids restricts the export (single paper / one project)."""
-    from agent_lit.models.paper import Paper
+    from otlet.models.paper import Paper
 
     api._db.add_paper(Paper(id="p1", title="Alpha Paper On Ports", year=2021))
     api._db.add_paper(Paper(id="p2", title="Beta Paper On Rails", year=2022))
@@ -178,7 +224,7 @@ def test_export_bibtex_subset_writes_only_selected_papers(api: Api, tmp_path: Pa
 
 def test_auto_tag_paper_nlp_method_needs_no_llm(api: Api):
     """method='nlp' runs the offline extractor with zero LLM configuration."""
-    from agent_lit.models.paper import Paper
+    from otlet.models.paper import Paper
 
     api._db.add_paper(Paper(
         id="p9",
@@ -199,7 +245,7 @@ def test_reveal_pdf_requires_existing_file(
     """Reveal in Finder: runs `open -R` only when a real PDF file is attached."""
     import subprocess
 
-    from agent_lit.models.paper import Paper
+    from otlet.models.paper import Paper
 
     # No PDF attached → refused
     api._db.add_paper(Paper(id="pr", title="Reveal Me"))

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from agent_lit.agents.base import AgentBase
-from agent_lit.llm.provider import LLMProvider
-from agent_lit.models.paper import Paper
+from otlet.agents.base import AgentBase
+from otlet.llm.provider import LLMProvider
+from otlet.models.paper import Paper
 
 _SYSTEM_PROMPT = """\
 You are an academic paper classifier. Given a paper's title, abstract, and \

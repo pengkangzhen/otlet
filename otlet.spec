@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec file for Agent-Lit — macOS desktop app."""
+"""PyInstaller spec file for Otlet — macOS desktop app."""
 
 from pathlib import Path
 
@@ -11,14 +11,14 @@ src_dir = Path(SPECPATH) / "src"
 litellm_pkg = Path(__import__("litellm").__file__).parent
 
 a = Analysis(
-    [str(src_dir / "agent_lit" / "cli.py")],
+    [str(src_dir / "otlet" / "cli.py")],
     pathex=[str(src_dir)],
     binaries=[],
     datas=[
         # litellm — entire package including JSON configs & tokenizers
         (str(litellm_pkg), "litellm"),
         # Web UI static files
-        (str(src_dir / "agent_lit" / "web" / "static"), "agent_lit/web/static"),
+        (str(src_dir / "otlet" / "web" / "static"), "otlet/web/static"),
     ],
     hiddenimports=[
         "pywebview",
@@ -75,7 +75,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="agent-lit",
+    name="otlet",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -96,5 +96,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="agent-lit",
+    name="otlet",
 )

@@ -7,25 +7,32 @@ identically no matter where the import was triggered from.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
-from agent_lit.storage.database import Database
-from agent_lit.storage.pdf_metadata import PDFMetadataExtractor
-from agent_lit.storage.pdf_store import PDFStore
+from otlet.models.author import Author
+from otlet.models.paper import Paper
+from otlet.storage.database import Database
+from otlet.storage.pdf_index import PDFIndex
+from otlet.storage.pdf_metadata import PDFMetadataExtractor
+from otlet.storage.pdf_store import PDFStore
 
 # ── Paper import flow ─────────────────────────────────────
 
 
-def find_duplicate(db: Database, paper: Paper) -> Paper | None:
+def find_duplicate(
+    db: Database, paper: Paper, *, fingerprint: str | None = None
+) -> Paper | None:
     """Return the existing library paper matching `paper`, if any.
 
-    Same rule everywhere: DOI match first, then fuzzy title match.
+    Exact keys first (same rule everywhere): file fingerprint → DOI,
+    then the fuzzy title match as the last resort.
     """
     dup = None
-    if paper.doi:
+    if fingerprint:
+        dup = db.get_paper_by_fingerprint(fingerprint)
+    if not dup and paper.doi:
         dup = db.get_paper_by_doi(paper.doi)
     if not dup:
         dup = db.get_paper_by_title(paper.title)
@@ -50,24 +57,37 @@ def import_pdf_file(
     if path.suffix.lower() != ".pdf":
         return {"ok": False, "error": "Not a PDF file"}
 
-    result = extractor.extract(path)
+    # One file read feeds everything: dedup fingerprint, metadata
+    # extraction, and the stored copy
+    data = path.read_bytes()
+    fingerprint = hashlib.sha256(data).hexdigest()
+
+    result = extractor.extract(path, data=data)
     if result.paper is None:
         return {"ok": False, "error": "Could not identify paper"}
 
     paper = result.paper
 
-    dup = find_duplicate(db, paper)
+    dup = find_duplicate(db, paper, fingerprint=fingerprint)
     if dup:
         # The dropped PDF is still valuable: attach it to the existing
-        # paper when it has none, instead of discarding the file
+        # paper when it has none, instead of discarding the file. A
+        # paper without pdf_path has no stored copy by the storage
+        # invariant, even when the fingerprint matched.
         attached = False
         if not dup.pdf_path:
             try:
-                stored = pdf_store.import_file(path, paper_id=dup.id)
-                db.update_paper_pdf(dup.id, str(stored))
+                stored = pdf_store.import_bytes(data, paper_id=dup.id)
+                db.update_paper(
+                    dup.id,
+                    pdf_path=str(stored),
+                    pdf_fingerprint=fingerprint,
+                )
                 attached = True
             except Exception:
                 pass
+        if attached:
+            PDFIndex(db, pdf_store).build(dup.id)
         return {
             "ok": False,
             "duplicate": True,
@@ -84,11 +104,15 @@ def import_pdf_file(
     paper.auto_tags = extract_auto_tags(paper)
 
     try:
-        stored = pdf_store.import_file(path, paper_id=paper.id)
+        stored = pdf_store.import_bytes(data, paper_id=paper.id)
         paper.pdf_path = str(stored)
+        paper.pdf_fingerprint = fingerprint
         db.add_paper(paper)
     except Exception as e:
         return {"ok": False, "error": f"Save error: {e}"}
+
+    # Full-text index right away — single imports are cheap to index
+    PDFIndex(db, pdf_store).build(paper.id)
 
     return {
         "ok": True,
@@ -104,7 +128,13 @@ def save_zotero_item(db: Database, pdf_store: PDFStore, item: dict) -> dict:
         return {"ok": False, "error": "Invalid item"}
 
     paper = Paper(**item["paper"])
-    dup = find_duplicate(db, paper)
+    fingerprint = None
+    pdf_path = item.get("pdf_path")
+    if pdf_path and Path(pdf_path).exists():
+        fingerprint = hashlib.sha256(
+            Path(pdf_path).read_bytes()
+        ).hexdigest()
+    dup = find_duplicate(db, paper, fingerprint=fingerprint)
     if dup:
         return {
             "ok": False,
@@ -113,14 +143,16 @@ def save_zotero_item(db: Database, pdf_store: PDFStore, item: dict) -> dict:
             "error": "Duplicate",
         }
     paper.auto_tags = extract_auto_tags(paper)
-    pdf_path = item.get("pdf_path")
     if pdf_path:
         try:
             stored = pdf_store.import_file(Path(pdf_path), paper_id=paper.id)
             paper.pdf_path = str(stored)
+            paper.pdf_fingerprint = fingerprint
         except Exception:
             pass  # PDF copy failure is non-fatal
     db.add_paper(paper)
+    if paper.pdf_path:
+        PDFIndex(db, pdf_store).build(paper.id)
     return {"ok": True, "id": paper.id}
 
 

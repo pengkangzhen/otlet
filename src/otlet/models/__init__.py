@@ -1,5 +1,5 @@
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
-from agent_lit.models.tag import Tag
+from otlet.models.author import Author
+from otlet.models.paper import Paper
+from otlet.models.tag import Tag
 
 __all__ = ["Author", "Paper", "Tag"]

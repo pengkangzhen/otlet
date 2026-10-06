@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_lit.cli import main
-from agent_lit.config.settings import Settings
+from otlet.cli import main
+from otlet.config.settings import Settings
 
 
 @pytest.fixture()
@@ -212,7 +212,7 @@ def test_settings_show(settings: Settings):
 def test_settings_set_valid_and_invalid(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ):
-    # Never let a test touch the real ~/.agent-lit/config.yaml —
+    # Never let a test touch the real ~/.otlet/config.yaml —
     # redirect Settings.save to a no-op recorder
     saved: dict = {}
     monkeypatch.setattr(
@@ -220,10 +220,10 @@ def test_settings_set_valid_and_invalid(
     )
 
     assert main(
-        ["settings", "set", "lit_model", "glm-4.7"], settings=settings
+        ["settings", "set", "model", "glm-4.7"], settings=settings
     ) == 0
-    assert settings.lit_model == "glm-4.7"
-    assert saved["lit_model"] == "glm-4.7"
+    assert settings.model == "glm-4.7"
+    assert saved["model"] == "glm-4.7"
 
     assert main(["settings", "set", "theme", "neon"], settings=settings) == 1
     assert main(["settings", "set", "no_such_key", "x"], settings=settings) == 1

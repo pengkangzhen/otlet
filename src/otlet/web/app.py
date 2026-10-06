@@ -10,8 +10,8 @@ from pathlib import Path
 import webview
 from webview.menu import Menu, MenuAction, MenuSeparator
 
-from agent_lit.config.settings import Settings
-from agent_lit.web.api import Api
+from otlet.config.settings import Settings
+from otlet.web.api import Api
 
 
 def _ensure_stdio() -> None:
@@ -47,7 +47,7 @@ def _build_menu(api: Api) -> list[Menu]:
         return _js_cb(api, code)
 
     return [
-        # __app__ menu: items appear under the macOS "Agent-Lit" app menu
+        # __app__ menu: items appear under the macOS "Otlet" app menu
         Menu("__app__", [
             MenuAction("Preferences…", js("openSettingsDialog()")),
             MenuAction("Toggle Theme", js("toggleThemeMenu()")),
@@ -66,8 +66,6 @@ def _build_menu(api: Api) -> list[Menu]:
         ]),
         Menu("Tags", [
             MenuAction("New Theme…", js("createTheme()")),
-            MenuSeparator(),
-            MenuAction("Auto Group Tags", js("autoGroupTags()")),
         ]),
         Menu("View", [
             MenuAction("Knowledge Graph", js("openGraph()")),
@@ -75,8 +73,9 @@ def _build_menu(api: Api) -> list[Menu]:
     ]
 
 
+
 def launch_gui(settings: Settings | None = None) -> None:
-    """Launch the Agent-Lit desktop application."""
+    """Launch the Otlet desktop application."""
     _ensure_stdio()
     settings = settings or Settings.load()
     api = Api(settings)
@@ -86,7 +85,7 @@ def launch_gui(settings: Settings | None = None) -> None:
     static_dir = Path(__file__).parent / "static"
 
     window = webview.create_window(
-        title="Agent-Lit",
+        title="Otlet",
         url=str(static_dir / "index.html"),
         js_api=api,
         width=1280,

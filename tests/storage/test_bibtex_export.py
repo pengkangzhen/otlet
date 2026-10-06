@@ -1,9 +1,9 @@
 """Tests for BibTeX export generation."""
 
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
-from agent_lit.services.importers import parse_bibtex
-from agent_lit.storage.bibtex_export import generate_bibtex, paper_to_bibtex
+from otlet.models.author import Author
+from otlet.models.paper import Paper
+from otlet.services.importers import parse_bibtex
+from otlet.storage.bibtex_export import generate_bibtex, paper_to_bibtex
 
 
 def _paper(**kwargs) -> Paper:

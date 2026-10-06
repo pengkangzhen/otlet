@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent-Lit</title>
+<title>Otlet</title>
 <style>
 /* ── Reset & Variables ─────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -34,6 +34,8 @@
   --radius:      10px;
   --radius-sm:   7px;
   --radius-xs:   5px;
+  --radius-lg:   10px;
+  --radius-pill: 999px;
   --shadow:      0 1px 2px rgba(33,30,25,0.04), 0 4px 16px rgba(33,30,25,0.05);
   --shadow-lg:   0 2px 6px rgba(33,30,25,0.06), 0 16px 48px rgba(33,30,25,0.14);
   --transition:  0.18s cubic-bezier(0.4, 0, 0.2, 1);
@@ -131,39 +133,25 @@ html, body {
   height: 100vh;
 }
 
-/* ── Toolbar ─────────────────────────────────────────── */
-.toolbar {
-  height: 44px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.toolbar .toolbar-btn {
-  padding: 5px 10px;
+/* ── Statusbar icon buttons (theme / settings) ──────────── */
+.statusbar .sbtn {
+  padding: 4px 6px;
   border-radius: var(--radius-xs);
-  font-size: 12px;
-  font-weight: 500;
   cursor: pointer;
   background: transparent;
   border: none;
   color: var(--text-muted);
   transition: all var(--transition);
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
 }
-.toolbar .toolbar-btn:hover {
+.statusbar .sbtn:hover {
   background: var(--surface-2);
   color: var(--text);
 }
-.toolbar .toolbar-btn svg,
-.toolbar .col-title svg {
+.statusbar .sbtn svg {
   width: 13px;
   height: 13px;
-  vertical-align: -2px;
-  margin-right: 4px;
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
@@ -171,15 +159,7 @@ html, body {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.toolbar .col-title svg { width: 15px; height: 15px; vertical-align: -3px; }
-.toolbar .toolbar-sep {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  margin: 0 6px;
-  flex-shrink: 0;
-}
-.toolbar .toolbar-spacer { flex: 1; }
+.statusbar .sbtn { padding: 2px 5px; }
 
 /* ── Notes (paper detail) ────────────────────────────── */
 .detail-notes { margin-top: 14px; }
@@ -256,6 +236,8 @@ html, body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  gap: 4px;
+  padding: 8px 10px;
 }
 
 /* ── 3-Column Layout ─────────────────────────────────── */
@@ -267,16 +249,23 @@ html, body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 .col-papers {
   width: 340px;
   min-width: 240px;
   max-width: 600px;
-  background: var(--bg);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 .col-detail {
   flex: 1;
@@ -284,9 +273,11 @@ html, body {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: var(--bg);
+  background: var(--surface);
   overflow: hidden;
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
 }
 .detail-close {
   position: absolute;
@@ -322,9 +313,9 @@ html, body {
 
 /* ── Resize Handles ──────────────────────────────────── */
 .resize-handle {
-  width: 1px;
+  width: 0;
   cursor: col-resize;
-  background: var(--border);
+  background: transparent;
   flex-shrink: 0;
   transition: background var(--transition);
   position: relative;
@@ -332,7 +323,7 @@ html, body {
 .resize-handle::before {
   content: '';
   position: absolute;
-  top: 0; bottom: 0; left: -3px; right: -3px;
+  top: 0; bottom: 0; left: -5px; right: -5px;
 }
 .resize-handle:hover,
 .resize-handle.active {
@@ -361,7 +352,7 @@ html, body {
 .paper-count-badge {
   margin-left: 8px;
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 500;
   background: var(--accent-soft);
@@ -377,39 +368,7 @@ html, body {
 .col-tags .tags-section::-webkit-scrollbar { width: 4px; }
 .col-tags .tags-section::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* ── Perspective Bar ─────────────────────────────────── */
-.perspective-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow-x: auto;
-  -webkit-app-region: no-drag;
-}
-.perspective-bar::-webkit-scrollbar { display: none; }
-.perspective-tab {
-  padding: 4px 10px;
-  border-radius: var(--radius-xs);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  transition: all var(--transition);
-}
-.perspective-tab:hover { background: var(--surface-2); color: var(--text); }
-.perspective-tab.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-}
-.perspective-tab .perspective-icon { margin-right: 3px; }
-
-/* ── Tag Tree ──────────────────────────────────────── */
+/* ── Theme tag tree (top-level themes + co-occurring tags) ── */
 .theme-group { margin-bottom: 2px; }
 .theme-header {
   display: flex;
@@ -431,16 +390,23 @@ html, body {
   transition: transform var(--transition);
   width: 14px;
   text-align: center;
+  flex-shrink: 0;
 }
 .theme-arrow.open { transform: rotate(90deg); }
-.theme-name { flex: 1; }
+.theme-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .theme-count {
   font-size: 11px;
   color: var(--text-dim);
   font-weight: 400;
   background: var(--surface-2);
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-pill);
 }
 .theme-children { padding-left: 20px; }
 .theme-child {
@@ -456,36 +422,64 @@ html, body {
 }
 .theme-child:hover { background: var(--surface-2); color: var(--text); }
 .theme-child.active { color: var(--accent); background: var(--accent-soft); }
-.theme-child-count { font-size: 10px; color: var(--text-dim); margin-left: auto; }
-
-/* ── Project list (flat sidebar rows) ───────────────── */
-.project-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  transition: background var(--transition);
-}
-.project-row:hover { background: var(--surface-2); }
-.project-row.active { background: var(--accent-soft); color: var(--accent); }
-.project-row.drop-hover {
-  outline: 2px dashed var(--accent);
-  outline-offset: -2px;
-  background: var(--accent-soft);
-}
-.project-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-tag-count {
-  font-size: 10px;
-  color: var(--text-dim);
-  font-weight: 400;
-  font-family: var(--font-mono);
+.theme-child-count { font-size: 10px; color: var(--text-dim); margin-left: auto; flex-shrink: 0; }
+/* Tag names never wrap: resizing the column truncates with an ellipsis
+   instead of re-flowing row heights ("floating" rows while dragging the
+   divider) */
+.theme-child-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* "show all / collapse" toggle row under a capped list */
+.theme-more { color: var(--text-dim); font-size: 10px; }
+/* Drag-to-nest: target row while a dragged tag hovers over it */
+.theme-header.drop-target, .theme-child.drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+/* The row being dragged fades so the eye tracks the chip, not the source */
+.theme-header.dragging, .theme-child.dragging { opacity: 0.35; }
+/* Floating chip rendered as the drag image (beats the whole-row snapshot) */
+.drag-chip {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Explicit drop zone for detaching a nested tag (appears during its drag) */
+.detach-zone {
+  display: none;
+  margin: 8px 10px;
+  padding: 7px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+  transition: all var(--transition);
+}
+.detach-zone.visible { display: block; }
+.detach-zone.drop-target {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+/* One-shot highlight on the row that was just nested or detached */
+@keyframes row-flash {
+  from { background: var(--accent-soft); }
+  to { background: transparent; }
+}
+.theme-header.flash, .theme-child.flash { animation: row-flash 1.2s ease-out; }
 .sidebar-hint {
   padding: 12px 10px;
   font-size: 12px;
@@ -550,25 +544,10 @@ html, body {
 }
 .search-wrap { position: relative; }
 
-/* ── Tag Chips (shared) ─────────────────────────────── */
-.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.tag-chip {
-  padding: 4px 11px;
-  border-radius: 14px;
-  font-size: 12px;
-  cursor: pointer;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  transition: all var(--transition);
-}
-.tag-chip:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-.tag-chip.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 25%, transparent);
-}
+/* ── Sidebar tag tree container ─────────────────────── */
+/* Vertical stack: theme groups must never share a row, whatever the
+   panel width (the old chip-era flex-wrap made them reflow sideways) */
+.tag-chips { display: block; }
 
 /* ── Paper List ────────────────────────────────────── */
 .paper-list {
@@ -592,6 +571,10 @@ html, body {
 }
 .paper-item.active {
   background: var(--surface);
+  border-left-color: var(--accent);
+}
+.paper-item.multisel {
+  background: var(--accent-soft);
   border-left-color: var(--accent);
 }
 .paper-title {
@@ -631,7 +614,7 @@ html, body {
 mark.hl {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: inherit;
-  border-radius: 2px;
+  border-radius: 4px;
   padding: 0 1px;
 }
 .paper-tags {
@@ -698,7 +681,7 @@ mark.hl {
 .paper-detail {
   padding: 28px 36px 20px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: transparent;
   overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
@@ -774,7 +757,7 @@ mark.hl {
 .detail-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 0; align-items: center; }
 .detail-tag {
   padding: 4px 11px;
-  border-radius: 14px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -795,7 +778,7 @@ mark.hl {
 .detail-tag .tag-remove:hover { opacity: 1; color: var(--red); }
 .detail-tag-add {
   padding: 4px 11px;
-  border-radius: 14px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   background: transparent;
   border: 1px dashed var(--border);
@@ -824,7 +807,7 @@ mark.hl {
 }
 .tag-add-input {
   padding: 3px 9px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   background: var(--surface-2);
   border: 1px solid var(--accent);
@@ -907,7 +890,7 @@ mark.hl {
 .chat-bubble {
   max-width: 70%;
   padding: 12px 16px;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   line-height: 1.65;
   font-size: 13px;
   white-space: pre-wrap;
@@ -927,7 +910,7 @@ mark.hl {
 .chat-bubble code {
   background: var(--surface-3);
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   font-family: 'SF Mono', Menlo, monospace;
   font-size: 12px;
 }
@@ -936,7 +919,7 @@ mark.hl {
 /* ── Chat Input ────────────────────────────────────── */
 .chat-input-area {
   padding: 12px 36px 20px;
-  background: var(--bg);
+  background: transparent;
 }
 .chat-input-wrap {
   display: flex;
@@ -944,7 +927,7 @@ mark.hl {
   align-items: flex-end;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 4px 4px 4px 16px;
   transition: all var(--transition);
 }
@@ -984,7 +967,7 @@ mark.hl {
 .chat-input-area .btn {
   font-size: 12px;
   padding: 4px 10px;
-  border-radius: 16px;
+  border-radius: var(--radius-pill);
   background: var(--surface);
   border-color: var(--border);
 }
@@ -1076,7 +1059,7 @@ mark.hl {
   stroke-linejoin: round;
 }
 
-/* Dynamic action menu (sidebar projects/perspectives) — scrolls when long */
+/* Dynamic action menu (sidebar tag menus) — scrolls when long */
 #actionMenu { min-width: 200px; max-height: 340px; overflow-y: auto; }
 
 /* ── Online Search Results Dialog ──────────────────── */
@@ -1174,7 +1157,7 @@ mark.hl {
 .dialog {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 28px;
   width: 480px;
   max-width: 90%;
@@ -1242,7 +1225,7 @@ mark.hl {
   color: var(--text-dim);
   background: var(--surface-2);
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
 }
 .zotero-select-all {
   font-size: 12px;
@@ -1313,7 +1296,7 @@ mark.hl {
 .theme-option.active { border-color: var(--accent); background: var(--accent-soft); }
 .theme-option-preview {
   width: 44px; height: 30px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   margin: 0 auto 8px;
   border: 1px solid var(--border);
 }
@@ -1354,7 +1337,7 @@ mark.hl {
   padding: 48px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
 .drop-overlay-icon { font-size: 52px; }
@@ -1364,7 +1347,6 @@ mark.hl {
 .welcome .logo svg { width: 64px; height: 64px; fill: none; stroke: var(--accent); stroke-width: 1.1; stroke-linecap: round; stroke-linejoin: round; }
 .notes-header svg { width: 12px; height: 12px; vertical-align: -1.5px; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
 .chat-avatar svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
-.perspective-tab .perspective-icon svg { width: 12px; height: 12px; vertical-align: -1.5px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
 .empty-state .icon svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 .drop-overlay-text { font-size: 17px; font-weight: 600; color: var(--accent); margin-top: 12px; }
 .progress-bar-wrap {
@@ -1372,13 +1354,13 @@ mark.hl {
   width: 280px;
   height: 6px;
   background: var(--surface-3);
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 .progress-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-hover));
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   transition: width 0.2s;
   width: 0%;
 }
@@ -1537,7 +1519,7 @@ mark.hl {
   box-shadow: var(--shadow);
 }
 .paper-item:hover {
-  background: var(--surface);
+  background: var(--surface-2);
   border-color: var(--border-light);
   border-left-color: var(--border-light);
 }
@@ -1547,12 +1529,17 @@ mark.hl {
   border-left-color: var(--accent);
 }
 .paper-item.active .paper-title { color: var(--accent); }
+.paper-item.multisel {
+  background: var(--accent-soft);
+  border-color: var(--border-light);
+  border-left-color: var(--accent);
+}
 
 /* Tags read as marker highlights over text, not bordered chips */
 .paper-tag {
   background: var(--highlight-soft);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-pill);
   padding: 1px 6px;
   color: var(--text);
 }
@@ -1560,7 +1547,7 @@ mark.hl {
 .detail-tag {
   background: var(--highlight-soft);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-pill);
 }
 .detail-tag:hover { background: var(--highlight); }
 
@@ -1573,13 +1560,12 @@ mark.hl {
 }
 .theme-child-count { font-family: var(--font-mono); font-size: 9.5px; }
 
-/* Chrome text: tracked small caps for column titles & toolbar */
+/* Chrome text: tracked small caps for column titles */
 .col-title {
   font-size: 11px;
   letter-spacing: 1.1px;
   font-weight: 600;
 }
-.toolbar .toolbar-btn { font-weight: 500; }
 .paper-count-badge { font-family: var(--font-mono); font-size: 10.5px; }
 .statusbar {
   font-family: var(--font-mono);
@@ -1794,28 +1780,18 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
 
 <div class="root">
 <!-- Toolbar: in-app entries mirroring the native menu -->
-<div class="toolbar">
-  <span class="col-title" style="margin-right:8px"><svg viewBox="0 0 16 16"><path d="M2 3.5c2-1.2 4-1.2 6 0 2-1.2 4-1.2 6 0V13c-2-1.2-4-1.2-6 0-2-1.2-4-1.2-6 0z"/><path d="M8 3.5V13"/></svg>Agent-Lit</span>
-  <button class="toolbar-btn" onclick="openImportDialog()"><svg viewBox="0 0 16 16"><path d="M2.5 1.5h4.8L9.5 3.7v6.8H2.5z"/><path d="M7.3 1.5v2.2h2.2"/><path d="M12.2 10v4.5M10 12.25h4.4"/></svg>Import PDFs</button>
-  <button class="toolbar-btn" onclick="importFolder()"><svg viewBox="0 0 16 16"><path d="M1.5 3.5h4.5l1.5 2h7v7.5h-13z"/></svg>Folder</button>
-  <button class="toolbar-btn" onclick="openZoteroDialog()"><svg viewBox="0 0 16 16"><path d="M4 1.5h8v13L8 11l-4 3.5z"/></svg>Zotero</button>
-  <div class="toolbar-sep"></div>
-  <button class="toolbar-btn" onclick="openGraph()"><svg viewBox="0 0 16 16"><circle cx="8" cy="3.2" r="1.8"/><circle cx="3.4" cy="12" r="1.8"/><circle cx="12.6" cy="12" r="1.8"/><path d="M7 4.7 4.4 10.4M9 4.7l2.6 5.7M5.2 12h5.6"/></svg>Graph</button>
-  <div class="toolbar-spacer"></div>
-  <button class="toolbar-btn" onclick="toggleThemeMenu()"><svg viewBox="0 0 16 16"><path d="M8 2a4 4 0 0 0 6 6 6 6 0 1 1-6-6z"/></svg>Theme</button>
-  <button class="toolbar-btn" onclick="openSettingsDialog()"><svg viewBox="0 0 16 16"><path d="M2 4.5h12M2 8h12M2 11.5h12"/><circle cx="6" cy="4.5" r="1.7"/><circle cx="10.8" cy="8" r="1.7"/><circle cx="5" cy="11.5" r="1.7"/></svg>Settings</button>
-</div>
 <div class="app">
   <!-- Column 1: Tags Sidebar. Container-level contextmenu only fires on blank space:
-       project rows and perspective tabs stopPropagation their own menus. -->
+       theme rows and tag rows stopPropagation their own menus. -->
   <div class="col-tags" id="colTags" oncontextmenu="showCtxMenuSidebar(event)">
     <div class="col-header">
       <span class="col-title"><svg viewBox="0 0 16 16"><path d="M1.5 1.5h7.2l5.8 5.8-7.2 7.2L1.5 8.8z"/><circle cx="5.2" cy="5.2" r="1.2"/></svg>Tags</span>
     </div>
-    <!-- Perspective selector -->
-    <div class="perspective-bar" id="perspectiveBar"></div>
     <div class="tags-section" id="tagsSection">
       <div class="tag-chips" id="tagChips"></div>
+      <div class="detach-zone" id="detachZone"
+           ondragover="detachZoneOver(event)" ondragleave="detachZoneLeave(event)"
+           ondrop="detachZoneDrop(event)">↳ 拖到此处脱离父标签</div>
     </div>
   </div>
 
@@ -1829,8 +1805,8 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
          The two tree tabs stay disabled until a project is selected. -->
     <div class="ws-tab-bar" id="wsTabs">
       <button class="ws-tab active" data-ws="papers" onclick="setOverviewTab('papers')"><svg viewBox="0 0 16 16"><rect x="3" y="1.5" width="10" height="13" rx="2"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3"/></svg>Papers <span class="paper-count-badge" id="wsPaperBadge">0</span></button>
-      <button class="ws-tab" id="wsTagsTab" data-ws="tags" onclick="setOverviewTab('tags')" disabled title="Select a project first"><svg viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.9"/><circle cx="12.4" cy="3.4" r="1.7"/><circle cx="12.4" cy="8" r="1.7"/><circle cx="12.4" cy="12.6" r="1.7"/><path d="M5.1 7.3c2 0 2.7-3.9 5.6-3.9M5.1 8h5.6M5.1 8.7c2 0 2.7 3.9 5.6 3.9"/></svg>Tag Tree</button>
-      <button class="ws-tab" id="wsAuthorsTab" data-ws="authors" onclick="setOverviewTab('authors')" disabled title="Select a project first"><svg viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.6"/><path d="M2.8 13.5c.7-2.7 2.7-4 5.2-4s4.5 1.3 5.2 4"/></svg>Authors</button>
+      <button class="ws-tab" id="wsTagsTab" data-ws="tags" onclick="setOverviewTab('tags')" disabled title="Select a theme tag first"><svg viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.9"/><circle cx="12.4" cy="3.4" r="1.7"/><circle cx="12.4" cy="8" r="1.7"/><circle cx="12.4" cy="12.6" r="1.7"/><path d="M5.1 7.3c2 0 2.7-3.9 5.6-3.9M5.1 8h5.6M5.1 8.7c2 0 2.7 3.9 5.6 3.9"/></svg>Tag Tree</button>
+      <button class="ws-tab" id="wsAuthorsTab" data-ws="authors" onclick="setOverviewTab('authors')" disabled title="Select a theme tag first"><svg viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.6"/><path d="M2.8 13.5c.7-2.7 2.7-4 5.2-4s4.5 1.3 5.2 4"/></svg>Authors</button>
     </div>
     <div id="wsPapersView" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div class="search-box">
@@ -1849,7 +1825,7 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
     <div class="ws-canvas-view" id="wsTagsView" style="display:none">
       <div class="ws-tree-canvas" id="tagTreeCanvas"></div>
       <div class="ws-tree-actions">
-        <span class="ov-refresh" onclick="autoTagTopic()" title="LLM-suggest tags for every paper in this project">✦ Auto-tag</span>
+        <span class="ov-refresh" onclick="autoTagTopic()" title="LLM-suggest tags for every paper under this theme">✦ Auto-tag</span>
       </div>
       <div class="ws-tree-hint">Click tag: filter · Double-click: papers · Right-click: categorize · Dashed = auto tag</div>
     </div>
@@ -1869,7 +1845,7 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
     <div class="detail-close" onclick="closeDetail()" title="Close panel"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></div>
     <div class="welcome" id="welcomeScreen">
       <div class="logo"><svg viewBox="0 0 16 16"><path d="M2 3.5c2-1.2 4-1.2 6 0 2-1.2 4-1.2 6 0V13c-2-1.2-4-1.2-6 0-2-1.2-4-1.2-6 0z"/><path d="M8 3.5V13"/></svg></div>
-      <h2>Agent-Lit</h2>
+      <h2>Otlet</h2>
       <p>Select a paper to view details and manage metadata.<br>
       Import PDFs to automatically identify and add papers.</p>
     </div>
@@ -1901,7 +1877,9 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
 <!-- Status Bar -->
 <div class="statusbar">
   <span id="statusText">Ready</span>
-  <span style="margin-left:auto;color:var(--text-dim);font-size:10px;font-family:var(--font-mono)">b24·drop-label</span>
+  <button class="sbtn" onclick="toggleThemeMenu()" title="Toggle light/dark theme"><svg viewBox="0 0 16 16"><path d="M8 2a4 4 0 0 0 6 6 6 6 0 1 1-6-6z"/></svg></button>
+  <button class="sbtn" onclick="openSettingsDialog()" title="Settings"><svg viewBox="0 0 16 16"><path d="M2 4.5h12M2 8h12M2 11.5h12"/><circle cx="6" cy="4.5" r="1.7"/><circle cx="10.8" cy="8" r="1.7"/><circle cx="5" cy="11.5" r="1.7"/></svg></button>
+  <span style="margin-left:auto;color:var(--text-dim);font-size:10px;font-family:var(--font-mono)">b35·no-strip</span>
 </div>
 </div>
 
@@ -1980,13 +1958,14 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
 <div class="ctx-menu" id="ctxMenu">
   <div class="ctx-item" id="ctxOpenItem" onclick="ctxOpenPdf()"><svg viewBox="0 0 16 16"><path d="M4 1.5h5.2L13 5.3V14.5H4z"/><path d="M9.2 1.5v3.8H13"/></svg>Open PDF</div>
   <div class="ctx-item" id="ctxRevealItem" onclick="ctxRevealPdf()" title="Show this paper's PDF file in Finder"><svg viewBox="0 0 16 16"><path d="M1.5 3.5h4.5l1.5 2h7v7.5h-13z"/><circle cx="12.2" cy="12" r="2.4"/><path d="M14 13.8 15.2 15"/></svg>Reveal in Finder</div>
-  <div class="ctx-item" onclick="ctxChat()"><svg viewBox="0 0 16 16"><path d="M2.5 3h11v7.5H8l-3 2.8v-2.8H2.5z"/><path d="M5.5 6.7h.01M8 6.7h.01M10.5 6.7h.01"/></svg>Chat</div>
-  <div class="ctx-item" onclick="ctxNewNote()"><svg viewBox="0 0 16 16"><path d="M2.5 2.5h11v8l-3 3h-8z"/><path d="M13.5 10.5h-3v3"/></svg>New Note</div>
-  <div class="ctx-item" onclick="ctxEditTitle()"><svg viewBox="0 0 16 16"><path d="M9.5 2.5l4 4L6 14H2v-4z"/><path d="M8 4l4 4"/></svg>Edit Title</div>
-  <div class="ctx-item" onclick="ctxCopyDoi()"><svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>Copy DOI</div>
-  <div class="ctx-item" onclick="ctxExportBib()"><svg viewBox="0 0 16 16"><path d="M8 10.5V2.8M5 5.8 8 2.8l3 3"/><path d="M2.5 10.5v2c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-2"/></svg>Export BibTeX</div>
-  <div class="ctx-item" onclick="ctxRenameTag()"><svg viewBox="0 0 16 16"><path d="M1.5 1.5h7.2l5.8 5.8-7.2 7.2L1.5 8.8z"/><circle cx="5.2" cy="5.2" r="1.2"/></svg>Rename Tag</div>
-  <div class="ctx-item danger" onclick="ctxDelete()"><svg viewBox="0 0 16 16"><path d="M2.5 4h11"/><path d="M6.5 4V2.5h3V4"/><path d="M4 4l.7 9c0 .8.7 1.5 1.5 1.5h3.6c.8 0 1.5-.7 1.5-1.5L12 4"/><path d="M6.7 7v4.5M9.3 7v4.5"/></svg>Delete</div>
+  <div class="ctx-item single-only" onclick="ctxChat()"><svg viewBox="0 0 16 16"><path d="M2.5 3h11v7.5H8l-3 2.8v-2.8H2.5z"/><path d="M5.5 6.7h.01M8 6.7h.01M10.5 6.7h.01"/></svg>Chat</div>
+  <div class="ctx-item single-only" onclick="ctxNewNote()"><svg viewBox="0 0 16 16"><path d="M2.5 2.5h11v8l-3 3h-8z"/><path d="M13.5 10.5h-3v3"/></svg>New Note</div>
+  <div class="ctx-item single-only" onclick="ctxEditTitle()"><svg viewBox="0 0 16 16"><path d="M9.5 2.5l4 4L6 14H2v-4z"/><path d="M8 4l4 4"/></svg>Edit Title</div>
+  <div class="ctx-item single-only" onclick="ctxCopyDoi()"><svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v1"/></svg>Copy DOI</div>
+  <div class="ctx-item" onclick="ctxExportBib()"><svg viewBox="0 0 16 16"><path d="M8 10.5V2.8M5 5.8 8 2.8l3 3"/><path d="M2.5 10.5v2c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-2"/></svg><span id="ctxExportLabel">Export BibTeX</span></div>
+  <div class="ctx-item" id="ctxClearSelItem" style="display:none" onclick="ctxClearSel()"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg>Clear Selection</div>
+  <div class="ctx-item single-only" onclick="ctxRenameTag()"><svg viewBox="0 0 16 16"><path d="M1.5 1.5h7.2l5.8 5.8-7.2 7.2L1.5 8.8z"/><circle cx="5.2" cy="5.2" r="1.2"/></svg>Rename Tag</div>
+  <div class="ctx-item danger single-only" onclick="ctxDelete()"><svg viewBox="0 0 16 16"><path d="M2.5 4h11"/><path d="M6.5 4V2.5h3V4"/><path d="M4 4l.7 9c0 .8.7 1.5 1.5 1.5h3.6c.8 0 1.5-.7 1.5-1.5L12 4"/><path d="M6.7 7v4.5M9.3 7v4.5"/></svg>Delete</div>
 </div>
 
 <!-- Dynamic Action Menu (sidebar projects/perspectives) -->
@@ -2111,17 +2090,19 @@ document.addEventListener('keydown', (e) => {
 
 // ── State ─────────────────────────────────────────────
 let papers = [];
-let tags = [];
-let activeTags = [];
-let activeGroups = []; // selected project (tag group) ids — OR within group, union across groups
+let tags = [];          // [{id, name, is_top, parent_id, category, color, paper_count}] from list_tags_with_counts
+let activeTags = [];    // selected tag names (AND); a theme tag here focuses the workspace
 let selectedPaper = null;
-let perspectives = [];
-let activePerspective = null;
-let _perspectiveView = null; // {groups: [...], ungrouped: [...]}
 let _chatExpanded = false;
 let _llmConfigured = false;
 let _chatHistoryLoaded = false;
-// Topic-overview drill-down (active while a project is selected)
+// Sidebar tree: expanded tag ids + lazily fetched co-occurring tags per tag
+let _expandedTags = new Set();
+let _cooc = {};        // tagId -> [{id, name, is_top, parent_id, category, paper_count}]
+let _coocShowAll = new Set();  // nodes whose full derived list is shown
+let _restShowAll = false;      // "other tags" list fully expanded
+let _restoredFocus = false;
+// Topic-overview drill-down (active while a theme is focused)
 let _overviewTags = [];     // tag names clicked in the tag-tree tab (AND)
 let _overviewAuthor = null; // author clicked in the authors tab
 
@@ -2129,7 +2110,7 @@ let _overviewAuthor = null; // author clicked in the authors tab
 const THEMES = ['light', 'dark', 'classic-light', 'classic-dark'];
 
 function initTheme() {
-  const saved = localStorage.getItem('agent-lit-theme') || 'light';
+  const saved = localStorage.getItem('otlet-theme') || 'light';
   applyTheme(saved);
 }
 
@@ -2148,7 +2129,7 @@ function applyTheme(theme) {
 
 function setTheme(theme) {
   if (!THEMES.includes(theme)) return;
-  localStorage.setItem('agent-lit-theme', theme);
+  localStorage.setItem('otlet-theme', theme);
   applyTheme(theme);
   // Persist to backend config — WKWebView localStorage may be wiped on restart
   if (typeof pywebview !== 'undefined' && pywebview.api) {
@@ -2163,7 +2144,7 @@ function syncThemeFromSettings() {
   pywebview.api.get_settings().then(r => {
     const d = JSON.parse(r);
     if (d.theme) {
-      localStorage.setItem('agent-lit-theme', d.theme);
+      localStorage.setItem('otlet-theme', d.theme);
       applyTheme(d.theme);
     }
   }).catch(() => {});
@@ -2171,16 +2152,16 @@ function syncThemeFromSettings() {
 
 function openSettingsDialog() {
   // Sync active state with current theme
-  const current = localStorage.getItem('agent-lit-theme') || 'light';
+  const current = localStorage.getItem('otlet-theme') || 'light';
   applyTheme(current);
   // Load LLM settings
   document.getElementById('settingsDialog').classList.add('active');
   pywebview.api.get_settings().then(r => {
     const d = JSON.parse(r);
-    document.getElementById('settModel').value = d.lit_model || '';
+    document.getElementById('settModel').value = d.model || '';
     document.getElementById('settApiKey').value = '';
     document.getElementById('settApiKey').placeholder = d.has_llm ? '(configured)' : 'sk-...';
-    document.getElementById('settApiBase').value = d.lit_api_base || '';
+    document.getElementById('settApiBase').value = d.api_base || '';
   }).catch(() => {});
 }
 
@@ -2193,9 +2174,9 @@ async function saveSettings() {
   const apiKey = document.getElementById('settApiKey').value.trim();
   const apiBase = document.getElementById('settApiBase').value.trim();
   const opts = {};
-  if (model) opts.lit_model = model;
-  if (apiKey) opts.lit_api_key = apiKey;
-  if (apiBase !== undefined) opts.lit_api_base = apiBase;
+  if (model) opts.model = model;
+  if (apiKey) opts.api_key = apiKey;
+  if (apiBase !== undefined) opts.api_base = apiBase;
   try {
     await api('save_settings', JSON.stringify(opts));
     toast('Settings saved', 'success');
@@ -2211,7 +2192,7 @@ initTheme();
 
 // ── Menu Bar Actions (called from native macOS menu) ───
 function toggleThemeMenu() {
-  const current = localStorage.getItem('agent-lit-theme') || 'light';
+  const current = localStorage.getItem('otlet-theme') || 'light';
   setTheme(current === 'light' ? 'dark' : 'light');
 }
 
@@ -2221,7 +2202,7 @@ function focusSearch() {
 }
 
 function showAbout() {
-  alert('Agent-Lit\nVersion 0.1.0\nAgent-based Literature Manager');
+  alert('Otlet\nVersion 0.1.0\nAgent-based Literature Manager');
 }
 
 // ── Init ──────────────────────────────────────────────
@@ -2247,6 +2228,7 @@ setTimeout(() => {
 
 // ── Data Loading ──────────────────────────────────────
 async function loadPapers() {
+  _multiSel.clear(); // a reloaded dataset invalidates bulk-selection ids
   const r = await pywebview.api.list_papers();
   papers = JSON.parse(r);
   await applyFilters(); // keeps active project/tag filters consistent after a reload
@@ -2255,42 +2237,36 @@ async function loadPapers() {
 
 async function loadTags() {
   // Auto tags stay hidden from the sidebar unless the persisted flag says otherwise
-  const showAuto = localStorage.getItem('agent-lit-show-auto') === '1';
-  const r = await pywebview.api.list_tags(showAuto);
+  const showAuto = localStorage.getItem('otlet-show-auto') === '1';
+  const r = await pywebview.api.list_tags_with_counts(showAuto);
   tags = JSON.parse(r);
-  // Load perspectives
-  const pr = await pywebview.api.list_perspectives();
-  const pd = JSON.parse(pr);
-  if (pd.ok) {
-    perspectives = pd.perspectives;
-    // If no perspectives exist yet, try migrating from old parent_id system
-    if (perspectives.length === 0 && tags.length > 0) {
-      const mr = await pywebview.api.list_tag_tree();
-      const md = JSON.parse(mr);
-      if (md.ok && md.tags.some(t => t.parent_id)) {
-        await pywebview.api.migrate_to_perspectives();
-        const pr2 = await pywebview.api.list_perspectives();
-        perspectives = JSON.parse(pr2).perspectives || [];
-      }
-    }
-    // Auto-select first perspective if none selected
-    if (!activePerspective && perspectives.length > 0) {
-      activePerspective = perspectives[0].id;
-    }
-  }
-  // Load perspective view
-  if (activePerspective) {
-    const vr = await pywebview.api.get_perspective_view(activePerspective, showAuto);
-    _perspectiveView = JSON.parse(vr);
-  } else {
-    _perspectiveView = null;
-  }
-  // Also load legacy tree for fallback
-  const tr = await pywebview.api.list_tag_tree();
-  const td = JSON.parse(tr);
-  if (td.ok) _tagTree = td.tags;
-  renderPerspectiveBar();
+  _cooc = {}; // tag data changed → drop cached co-occurrence lists
   renderTags();
+  if (!_restoredFocus) {
+    // First load of the session: refocus the theme the user last had open
+    _restoredFocus = true;
+    await _restoreLastFocus();
+  }
+}
+
+// Fetch and cache a theme's co-occurring tags (the derived second level)
+async function _loadCooc(themeId) {
+  if (_cooc[themeId]) return;
+  const showAuto = localStorage.getItem('otlet-show-auto') === '1';
+  const r = await pywebview.api.get_cooccurring_tags(themeId, showAuto);
+  _cooc[themeId] = JSON.parse(r);
+}
+
+async function _restoreLastFocus() {
+  const id = localStorage.getItem('otlet-active-top');
+  if (!id) return;
+  const t = tags.find(x => x.id === id && x.is_top);
+  if (!t) { localStorage.removeItem('otlet-active-top'); return; }
+  activeTags = [t.name];
+  await _loadCooc(t.id);
+  _expandedTags.add(t.id);
+  renderTags();
+  await applyFilters();
 }
 
 // ── Render ────────────────────────────────────────────
@@ -2345,7 +2321,7 @@ function renderPapers(list) {
       ? '<div class="paper-tags">' + p.tags.slice(0, 5).map(t => `<span class="paper-tag">${esc(t)}</span>`).join('') + (p.tags.length > 5 ? `<span class="paper-tag">+${p.tags.length - 5}</span>` : '') + '</div>'
       : '';
     return `
-      <div class="paper-item ${selectedPaper && selectedPaper.id === p.id ? 'active' : ''}" onclick="selectPaper('${p.id}')" ondblclick="openPdfById('${p.id}')" oncontextmenu="showCtxMenu(event, '${p.id}')">
+      <div class="paper-item ${selectedPaper && selectedPaper.id === p.id ? 'active' : ''}${_multiSel.has(p.id) ? ' multisel' : ''}" onclick="selectPaper('${p.id}', event)" ondblclick="openPdfById('${p.id}')" oncontextmenu="showCtxMenu(event, '${p.id}')">
         <div class="paper-title">${typeIcon}<span class="title-text">${_hl(p.title)}</span></div>
         <div class="paper-meta">${metaParts}</div>
         ${venueTag ? '<div class="paper-info-row">' + venueTag + '</div>' : ''}
@@ -2354,216 +2330,241 @@ function renderPapers(list) {
   }).join('');
 }
 
-let _tagTree = []; // flat list with parent_id
-
-// ── Render Tags as Tree ──────────────────────────────
-let _expandedThemes = new Set();
-
-function renderPerspectiveBar() {
-  const bar = document.getElementById('perspectiveBar');
-  // Progressive disclosure: with 0-1 perspectives there is nothing to switch — hide the bar
-  if (perspectives.length <= 1) {
-    bar.innerHTML = '';
-    bar.style.display = 'none';
-    return;
-  }
-  bar.style.display = '';
-  bar.innerHTML = perspectives.map(p =>
-    `<button class="perspective-tab ${activePerspective === p.id ? 'active' : ''}"
-      onclick="switchPerspective('${p.id}')"
-      oncontextmenu="showCtxMenuPerspective(event, '${p.id}')">
-      <span class="perspective-icon">${p.icon || '<svg viewBox="0 0 16 16"><path d="M1.5 3.5h4.5l1.5 2h7v7.5h-13z"/></svg>'}</span>${esc(p.name)}
-    </button>`
-  ).join('');
-}
-
-async function switchPerspective(perspectiveId) {
-  activePerspective = perspectiveId;
-  activeTags = [];
-  activeGroups = [];
-  _overviewTags = [];
-  _overviewAuthor = null;
-  const vr = await pywebview.api.get_perspective_view(perspectiveId);
-  _perspectiveView = JSON.parse(vr);
-  renderPerspectiveBar();
-  renderTags();
-  await loadPapers();
-}
-
-async function createGroupInPerspective() {
-  // Projects need a perspective to live in; bootstrap a default one on first use
-  if (!activePerspective) {
-    const d = await api('create_perspective', 'Default');
-    if (!d.ok) return;
-    activePerspective = d.id;
-  }
-  const name = prompt('Project name (e.g., 空箱调运):');
-  if (!name || !name.trim()) return;
-  const d = await api('create_group', activePerspective, name.trim());
-  if (d.ok) {
-    await loadTags();
-    toast('Project created', 'success');
-  }
-}
-
-async function addTagToGroup(groupId, tagName) {
-  await api('add_tag_to_group', groupId, tagName);
-  await loadTags();      // refresh group membership shown in the sidebar
-  await applyFilters();  // re-filter if this project is active
-}
-
-async function removeTagFromGroup(groupId, tagName) {
-  await api('remove_tag_from_group', groupId, tagName);
-  await loadTags();      // refresh group membership shown in the sidebar
-  await applyFilters();  // re-filter if this project is active
-}
-
+// ── Render Tags: theme tree (themes → nested + co-occurring tags) ──
 function renderTags() {
   const el = document.getElementById('tagChips');
   const section = document.getElementById('tagsSection');
 
-  if (_perspectiveView && _perspectiveView.ok) {
-    // ── Project list: flat rows, one per tag group in the active perspective ──
-    const groups = _perspectiveView.groups || [];
-    section.style.display = '';
-    if (groups.length === 0) {
-      el.innerHTML = '<div class="sidebar-hint">No projects yet.<br>Right-click empty space in this sidebar to create one,<br>then right-click it to add tags.</div>';
-      return;
-    }
-    let html = '';
-    for (const g of groups) {
-      const tagNames = g.tags.map(t => t.name);
-      const directIds = new Set(g.paper_ids || []);
-      // Count unique papers: a project tag OR direct filing
-      const count = new Set(
-        papers.filter(p => directIds.has(p.id) || (p.tags || []).some(t => tagNames.includes(t))).map(p => p.id)
-      ).size;
-      const isActive = activeGroups.includes(g.group_id);
-      html += `<div class="project-row ${isActive ? 'active' : ''}" data-gid="${g.group_id}" data-gname="${esc(g.group_name).replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" onclick="onGroupClick(event, '${g.group_id}')" oncontextmenu="showCtxMenuGroup(event, '${g.group_id}', '${esc(g.group_name)}')">`;
-      html += `<span class="project-name">${esc(g.group_name)}</span>`;
-      html += `<span class="project-tag-count">${g.tags.length} tags</span>`;
-      html += `<span class="theme-count">${count}</span>`;
-      html += `</div>`;
-    }
-    el.innerHTML = html;
-  } else {
-    // ── Fallback: legacy parent_id tree rendering ──
-    if (tags.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-    section.style.display = '';
-    el.innerHTML = renderTagsLegacy();
+  if (tags.length === 0) {
+    section.style.display = 'none';
+    return;
   }
-}
-
-function renderTagsLegacy() {
-  // Count papers per tag
-  const tagCounts = {};
-  for (const p of papers) {
-    for (const t of (p.tags || [])) {
-      tagCounts[t] = (tagCounts[t] || 0) + 1;
-    }
-  }
-  const byId = {};
-  const childrenOf = {};
-  for (const t of _tagTree) {
-    byId[t.id] = t;
-    if (t.parent_id) {
-      childrenOf[t.parent_id] = childrenOf[t.parent_id] || [];
-      childrenOf[t.parent_id].push(t);
-    }
-  }
-  const themes = [];
-  const assignedIds = new Set();
-  for (const t of _tagTree) {
-    if (!t.parent_id && childrenOf[t.id] && childrenOf[t.id].length > 0) {
-      themes.push(t);
-      assignedIds.add(t.id);
-      childrenOf[t.id].forEach(c => assignedIds.add(c.id));
-    }
-  }
-  themes.sort((a, b) => {
-    const ca = (tagCounts[a.name] || 0) + (childrenOf[a.id] || []).reduce((s, c) => s + (tagCounts[c.name] || 0), 0);
-    const cb = (tagCounts[b.name] || 0) + (childrenOf[b.id] || []).reduce((s, c) => s + (tagCounts[c.name] || 0), 0);
-    return cb - ca;
-  });
-  const unassigned = tags.filter(t => !assignedIds.has(t.id))
-    .sort((a, b) => (tagCounts[b.name] || 0) - (tagCounts[a.name] || 0));
+  section.style.display = '';
+  const tops = tags.filter(t => t.is_top);
+  const rest = tags.filter(t => !t.is_top && !t.parent_id);
 
   let html = '';
-  for (const theme of themes) {
-    const isExpanded = _expandedThemes.has(theme.id);
-    const isActive = activeTags.includes(theme.name);
-    const childTags = childrenOf[theme.id] || [];
-    const totalPapers = new Set();
-    for (const p of papers) {
-      if ((p.tags || []).includes(theme.name)) totalPapers.add(p.id);
-      for (const c of childTags) {
-        if ((p.tags || []).includes(c.name)) totalPapers.add(p.id);
-      }
-    }
+  // Subtrees are drawn at most once per render pass: co-occurrence is a
+  // dense symmetric graph, so recursing into a tag under every parent that
+  // lists it explodes combinatorially once a few nodes are expanded
+  const renderedSubtrees = new Set();
+  for (const t of tops) {
+    const isExpanded = _expandedTags.has(t.id);
+    const isActive = activeTags.includes(t.name);
     html += `<div class="theme-group">`;
-    html += `<div class="theme-header ${isActive ? 'active' : ''}" onclick="toggleTheme('${theme.id}', '${esc(theme.name)}')" oncontextmenu="showCtxMenuTag(event, '${esc(theme.name)}')">`;
+    html += `<div class="theme-header ${isActive ? 'active' : ''}" data-tag="${t.id}"${_dragAttrs(t.id)} onclick="toggleTagNode('${t.id}', '${esc(t.name)}')" oncontextmenu="showTagMenu(event, '${t.id}')">`;
     html += `<span class="theme-arrow ${isExpanded ? 'open' : ''}">▶</span>`;
-    html += `<span class="theme-name">${esc(theme.display_name || theme.name)}</span>`;
-    html += `<span class="theme-count">${totalPapers.size}</span>`;
+    html += `<span class="theme-name">${esc(t.name)}</span>`;
+    html += `<span class="theme-count">${t.paper_count}</span>`;
     html += `</div>`;
-    if (isExpanded && childTags.length > 0) {
-      html += `<div class="theme-children">`;
-      for (const child of childTags) {
-        const cc = tagCounts[child.name] || 0;
-        const childActive = activeTags.includes(child.name);
-        html += `<div class="theme-child ${childActive ? 'active' : ''}" onclick="onTagClick(event, '${esc(child.name)}')" oncontextmenu="showCtxMenuTag(event, '${esc(child.name)}')">`;
-        html += `<span>${esc(child.display_name || child.name)}</span>`;
-        html += `<span class="theme-child-count">${cc}</span>`;
-        html += `</div>`;
-      }
-      html += `</div>`;
-    }
+    if (isExpanded) html += _renderTagChildren(t.id, 1, renderedSubtrees);
     html += `</div>`;
   }
-  if (unassigned.length > 0) {
-    html += `<div class="unassigned-header">── ${unassigned.length} unassigned ──</div>`;
-    for (const t of unassigned) {
-      const count = tagCounts[t.name] || 0;
+  if (rest.length > 0) {
+    const LIMIT = 15;
+    const shown = _restShowAll ? rest : rest.slice(0, LIMIT);
+    html += `<div class="unassigned-header">── ${rest.length} other tags ──</div>`;
+    for (const t of shown) {
       const isActive = activeTags.includes(t.name);
-      html += `<div class="theme-child ${isActive ? 'active' : ''}" onclick="onTagClick(event, '${esc(t.name)}')" oncontextmenu="showCtxMenuTag(event, '${esc(t.name)}')">`;
-      html += `<span>${esc(t.display_name || t.name)}</span>`;
-      html += `<span class="theme-child-count">${count}</span>`;
+      html += `<div class="theme-child ${isActive ? 'active' : ''}" data-tag="${t.id}"${_dragAttrs(t.id)} onclick="onTagClick(event, '${esc(t.name)}')" oncontextmenu="showTagMenu(event, '${t.id}')">`;
+      html += `<span class="theme-arrow" style="visibility:hidden">▶</span>`;
+      html += `<span class="theme-child-name">${esc(t.name)}</span>`;
+      html += `<span class="theme-child-count">${t.paper_count}</span>`;
       html += `</div>`;
     }
+    if (rest.length > LIMIT) {
+      html += `<div class="theme-child theme-more" onclick="toggleRestAll()">${_restShowAll ? '⋯ 收起' : `⋯ 展开全部 ${rest.length} 个`}</div>`;
+    }
   }
+  el.innerHTML = html;
+}
+
+// Children of a tree node: manually nested tags (parent_id) first, then
+// co-occurring tags. Nested tags are excluded server-side from every
+// co-occurrence list, so a tag shows either under its chosen parent or
+// in the derived pool — never both. The derived tail is capped to keep
+// the sidebar readable (toggle row reveals the rest).
+function _hasKids(nodeId) {
+  if (tags.some(t => t.parent_id === nodeId)) return true;
+  return (_cooc[nodeId] || []).some(c => !c.is_top && !c.parent_id);
+}
+function _renderTagChildren(nodeId, depth = 1, rendered = null) {
+  if (!rendered) rendered = new Set();
+  const explicit = tags.filter(t => t.parent_id === nodeId);
+  const explicitIds = new Set(explicit.map(t => t.id));
+  const dyn = (_cooc[nodeId] || [])
+    .filter(c => !c.is_top && !c.parent_id && !explicitIds.has(c.id));
+  const LIMIT = 10;
+  const showAll = _coocShowAll.has(nodeId);
+  const shownDyn = showAll ? dyn : dyn.slice(0, Math.max(0, LIMIT - explicit.length));
+  let html = `<div class="theme-children" style="padding-left:${8 + depth * 12}px">`;
+  if (explicit.length === 0 && dyn.length === 0) {
+    html += `<div class="theme-child" style="pointer-events:none">— no co-occurring tags —</div>`;
+  }
+  for (const c of explicit.concat(shownDyn)) {
+    const childActive = activeTags.includes(c.name);
+    // Subtree already drawn under another parent this pass → plain leaf row
+    const drawn = rendered.has(c.id);
+    const expandable = !drawn && (_expandedTags.has(c.id) || _hasKids(c.id));
+    const onClick = expandable
+      ? `onclick="toggleTagNode('${c.id}', '${esc(c.name)}')"`
+      : `onclick="onTagClick(event, '${esc(c.name)}')"`;
+    html += `<div class="theme-child ${childActive ? 'active' : ''}" data-tag="${c.id}"${_dragAttrs(c.id)} ${onClick} oncontextmenu="showTagMenu(event, '${c.id}')">`;
+    html += `<span class="theme-arrow${_expandedTags.has(c.id) ? ' open' : ''}"${expandable ? '' : ' style="visibility:hidden"'}>▶</span>`;
+    html += `<span class="theme-child-name">${esc(c.name)}</span>`;
+    html += `<span class="theme-child-count">${c.paper_count}</span>`;
+    html += `</div>`;
+    if (_expandedTags.has(c.id) && !drawn) {
+      rendered.add(c.id);
+      html += _renderTagChildren(c.id, depth + 1, rendered);
+    }
+  }
+  if (!showAll && dyn.length > shownDyn.length) {
+    html += `<div class="theme-child theme-more" onclick="toggleCoocAll('${nodeId}')">⋯ 展开全部 ${explicit.length + dyn.length} 个</div>`;
+  } else if (showAll && explicit.length + dyn.length > LIMIT) {
+    html += `<div class="theme-child theme-more" onclick="toggleCoocAll('${nodeId}')">⋯ 收起</div>`;
+  }
+  html += `</div>`;
   return html;
 }
 
-function toggleGroup(groupId) {
-  if (_expandedThemes.has(groupId)) {
-    _expandedThemes.delete(groupId);
-  } else {
-    _expandedThemes.add(groupId);
-  }
+function toggleCoocAll(nodeId) {
+  if (_coocShowAll.has(nodeId)) _coocShowAll.delete(nodeId);
+  else _coocShowAll.add(nodeId);
+  renderTags();
+}
+function toggleRestAll() {
+  _restShowAll = !_restShowAll;
   renderTags();
 }
 
-function toggleTheme(themeId, themeName) {
-  if (_expandedThemes.has(themeId)) {
-    _expandedThemes.delete(themeId);
+async function toggleTagNode(tagId, tagName) {
+  if (_expandedTags.has(tagId)) {
+    _expandedTags.delete(tagId);
   } else {
-    _expandedThemes.add(themeId);
+    _expandedTags.add(tagId);
+    await _loadCooc(tagId); // derived level is a live query, not stored
   }
-  // Also filter by this theme
-  onTagClick(new MouseEvent('click'), themeName);
+  // Also filter by this tag
+  onTagClick(new MouseEvent('click'), tagName);
 }
 
-function toggleRareTags() {
-  _showRareTags = !_showRareTags;
-  renderTags();
+// ── Tag drag-and-drop: nest a tag under another ──────
+let _dragTagId = null;
+// Shared draggable/drop-target attributes for every tag row
+function _dragAttrs(id) {
+  return ` draggable="true"`
+    + ` ondragstart="tagDragStart(event, '${id}')"`
+    + ` ondragover="tagDragOver(event, '${id}')" ondragleave="tagDragLeave(event)"`
+    + ` ondrop="tagDrop(event, '${id}')"`;
 }
+function tagDragStart(e, id) {
+  _dragTagId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', id);
+  e.currentTarget.classList.add('dragging');
+  // Custom drag image: a small chip beats the whole-row snapshot
+  const t = tags.find(x => x.id === id);
+  const chip = document.createElement('div');
+  chip.className = 'drag-chip';
+  chip.textContent = t ? t.name : id;
+  document.body.appendChild(chip);
+  e.dataTransfer.setDragImage(chip, 18, 12);
+  setTimeout(() => chip.remove(), 50);
+  // Only a nested tag gets the explicit detach drop zone
+  if (t && t.parent_id) document.getElementById('detachZone').classList.add('visible');
+}
+// True if ancestorId sits above nodeId in the manual hierarchy
+function _isUnderAncestor(nodeId, ancestorId) {
+  let cur = (tags.find(t => t.id === nodeId) || {}).parent_id;
+  while (cur) {
+    if (cur === ancestorId) return true;
+    cur = (tags.find(t => t.id === cur) || {}).parent_id;
+  }
+  return false;
+}
+function _dropAllowed(targetId) {
+  // No self-drops, no drops into the dragged tag's own subtree
+  return !!_dragTagId && _dragTagId !== targetId
+    && !_isUnderAncestor(targetId, _dragTagId);
+}
+function tagDragOver(e, id) {
+  if (!_dropAllowed(id)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const row = e.currentTarget;
+  if (row.classList.contains('drop-target')) return;
+  // Own the highlight centrally: clear every other row, light this one.
+  // (dragleave fires when crossing into a child span — relying on it alone
+  // makes the highlight flicker)
+  document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+  row.classList.add('drop-target');
+}
+function tagDragLeave(e) {
+  const row = e.currentTarget;
+  // Moving onto a child span fires dragleave too; ignore those
+  if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+  row.classList.remove('drop-target');
+}
+async function tagDrop(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.classList.remove('drop-target');
+  const dragId = _dragTagId;
+  _dragTagId = null;
+  if (dragId === id || _isUnderAncestor(id, dragId)) return; // backend guard mirror
+  const dragged = tags.find(t => t.id === dragId);
+  const target = tags.find(t => t.id === id);
+  if (!dragged || !target || dragged.parent_id === id) return;
+  const resp = await api('set_tag_parent', dragged.id, target.id);
+  if (!resp.ok) { toast(resp.error || 'Nesting failed', 'error'); return; }
+  _expandedTags.add(target.id); // reveal the new child right away
+  await loadTags();             // drops the co-occurrence cache, re-renders
+  await _loadCooc(target.id);
+  renderTags();
+  const row = document.querySelector(`[data-tag="${dragged.id}"]`);
+  if (row) {
+    row.scrollIntoView({ block: 'nearest' });
+    row.classList.add('flash');
+    setTimeout(() => row.classList.remove('flash'), 1300);
+  }
+  toast(`「${dragged.name}」已挂到「${target.name}」下`, 'success');
+}
+// Detach zone: the explicit target shown while dragging a nested tag.
+// Blank sidebar space deliberately does nothing — an imprecise drop should
+// cancel, not accidentally detach a tag from its parent.
+function detachZoneOver(e) {
+  if (!_dragTagId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+  e.currentTarget.classList.add('drop-target');
+}
+function detachZoneLeave(e) {
+  e.currentTarget.classList.remove('drop-target');
+}
+async function detachZoneDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.classList.remove('drop-target');
+  const dragged = tags.find(t => t.id === _dragTagId);
+  _dragTagId = null;
+  if (!dragged || !dragged.parent_id) return;
+  const resp = await api('set_tag_parent', dragged.id, null);
+  if (!resp.ok) { toast(resp.error || 'Detach failed', 'error'); return; }
+  await loadTags();
+  toast(`「${dragged.name}」已脱离父标签`, 'success');
+}
+document.addEventListener('dragend', () => {
+  _dragTagId = null;
+  document.querySelectorAll('.drop-target, .dragging').forEach(el =>
+    el.classList.remove('drop-target', 'dragging'));
+  document.getElementById('detachZone').classList.remove('visible');
+});
 
 // ── Theme Management ──────────────────────────────────
 async function createTheme() {
-  const name = prompt('Create new theme:');
+  const name = prompt('New theme tag (top-level, e.g. 空箱调运):');
   if (!name || !name.trim()) return;
   try {
     await pywebview.api.create_theme(name.trim());
@@ -2574,37 +2575,21 @@ async function createTheme() {
   }
 }
 
-async function autoGroupTags() {
-  document.getElementById('statusText').textContent = 'Analyzing tags...';
-  try {
-    const r = await pywebview.api.auto_group_tags();
-    const d = JSON.parse(r);
-    if (!d.ok || d.suggestions.length === 0) {
-      document.getElementById('statusText').textContent = 'No grouping suggestions found';
-      return;
-    }
-    // Show suggestions
-    let msg = `Found ${d.themes.length} potential themes and ${d.suggestions.length} grouping suggestions:\n\n`;
-    for (const s of d.suggestions) {
-      msg += `  "${s.tag}" → "${s.theme}" (${s.cooc} shared papers)\n`;
-    }
-    msg += '\nApply all?';
-    if (confirm(msg)) {
-      for (const s of d.suggestions) {
-        await pywebview.api.set_tag_parent(s.tag, s.theme);
-      }
-      document.getElementById('statusText').textContent = `Grouped ${d.suggestions.length} tags`;
-      await loadTags();
-    } else {
-      document.getElementById('statusText').textContent = 'Ready';
-    }
-  } catch(e) {
-    document.getElementById('statusText').textContent = 'Error: ' + e.message;
-  }
-}
-
 // ── Paper Selection ───────────────────────────────────
-async function selectPaper(id) {
+let _multiSel = new Set(); // Cmd/Ctrl+click bulk selection → right-click Export BibTeX
+
+async function selectPaper(id, ev) {
+  // Cmd/Ctrl+click toggles membership in the bulk selection; the detail
+  // panel is left untouched while picking
+  if (ev && (ev.metaKey || ev.ctrlKey)) {
+    if (_multiSel.has(id)) _multiSel.delete(id); else _multiSel.add(id);
+    await applyFilters(); // re-renders rows (and resets statusText)
+    document.getElementById('statusText').textContent =
+      _multiSel.size + (_multiSel.size === 1 ? ' paper' : ' papers') + ' selected — right-click to export';
+    return;
+  }
+  // A plain click collapses any bulk selection; the applyFilters() below re-renders
+  if (_multiSel.size) _multiSel.clear();
   const prev = selectedPaper;
   selectedPaper = papers.find(p => p.id === id);
   if (!selectedPaper) return;
@@ -2848,32 +2833,7 @@ async function sendMessage() {
   document.getElementById('statusText').textContent = 'Ready';
 }
 
-// ── Filtering: projects (sidebar) and tags (detail panel) ──
-function onGroupClick(event, groupId) {
-  // Cmd (macOS) / Ctrl (Windows) = multi-select append
-  const append = event.metaKey || event.ctrlKey;
-  if (append) {
-    const idx = activeGroups.indexOf(groupId);
-    if (idx >= 0) activeGroups.splice(idx, 1);
-    else activeGroups.push(groupId);
-  } else {
-    if (activeGroups.length === 1 && activeGroups[0] === groupId) {
-      activeGroups = [];
-    } else {
-      activeGroups = [groupId];
-    }
-  }
-  if (activeGroups.length) activeTags = []; // project and tag filters are exclusive
-  _overviewTags = [];
-  _overviewAuthor = null;
-  const searchInput = document.getElementById('searchInput');
-  if (searchInput.value) searchInput.value = '';
-  renderTags();
-  applyFilters();
-  // Selecting a project defaults the workspace to the paper list
-  if (activeGroups.length && _overviewTab !== 'papers') setOverviewTab('papers');
-}
-
+// ── Filtering: tag filters (sidebar themes + tags, detail-panel tags) ──
 function onTagClick(event, name) {
   // Cmd (macOS) / Ctrl (Windows) = multi-select append
   const append = event.metaKey || event.ctrlKey;
@@ -2892,7 +2852,6 @@ async function toggleTag(name, append) {
       activeTags = [name];
     }
   }
-  if (activeTags.length) activeGroups = []; // project and tag filters are exclusive
   _overviewTags = [];
   _overviewAuthor = null;
   // Filtering and search are exclusive UI states
@@ -2902,9 +2861,8 @@ async function toggleTag(name, append) {
   await applyFilters();
 }
 
-// Imported papers are filed into the active project (addPapersToActiveGroups),
-// so the project filter stays on and keeps showing them. A plain tag filter
-// would still hide fresh imports — clear only that.
+// Imported papers carry no tags yet, so any active tag filter (theme or
+// plain) would hide them — drop the filter so fresh imports stay visible.
 function clearTagFilterForImports() {
   if (activeTags.length) {
     activeTags = [];
@@ -2912,51 +2870,37 @@ function clearTagFilterForImports() {
   }
 }
 
-// File freshly imported (or pre-existing duplicate) papers into every active
-// project so they appear under the project filter — Zotero collection behavior.
-async function addPapersToActiveGroups(paperIds) {
-  if (!activeGroups.length || !paperIds.length) return;
-  for (const gid of activeGroups) {
-    for (const pid of paperIds) {
-      await api('add_paper_to_group', pid, gid);
-    }
-  }
-}
-
-// Re-render the paper list honoring active project and tag filters.
-// Projects: OR within a group's tags, union across selected groups (client-side),
-// then narrowed by the overview panel's drill-down (tags AND + author).
-// Tags: AND across selected tags (backend query).
+// Re-render the paper list honoring the active tag filter (AND), narrowed
+// further by the overview panel's drill-down (tags AND + author).
 async function applyFilters() {
-  // Project deselected anywhere → drop drill-down state, hide the workspace tabs
-  if (!activeGroups.length) {
+  const themeFocused = tags.some(t => t.is_top && activeTags.includes(t.name));
+  if (!themeFocused) {
     _overviewTags = [];
     _overviewAuthor = null;
   }
   _syncWorkspaceTabs();
-  if (activeGroups.length) {
+  // Remember the focused theme so the next launch reopens on it
+  const topActive = tags.find(t => t.is_top && activeTags.includes(t.name));
+  if (topActive) localStorage.setItem('otlet-active-top', topActive.id);
+  else localStorage.removeItem('otlet-active-top');
+  if (activeTags.length) {
     let list = _topicPapers();
     if (_overviewTags.length)
       list = list.filter(p => _overviewTags.every(t => (p.tags || []).includes(t)));
     if (_overviewAuthor)
       list = list.filter(p => (p.authors || []).some(a => a.name === _overviewAuthor));
     renderPapers(list);
-    let status = activeGroups.length + ' project(s) active';
+    let status = activeTags.join(' + ') + ' · ' + list.length + ' / ' + papers.length + ' papers';
     if (_overviewTags.length) status += ' · ' + _overviewTags.join(' + ');
     if (_overviewAuthor) status += ' · ' + _overviewAuthor;
     document.getElementById('statusText').textContent = status;
-  } else if (activeTags.length) {
-    document.getElementById('statusText').textContent = 'Filtering...';
-    const r = await pywebview.api.find_papers_by_tags(JSON.stringify(activeTags));
-    renderPapers(JSON.parse(r));
-    document.getElementById('statusText').textContent = activeTags.length + ' tag(s) active';
   } else {
     renderPapers();
     document.getElementById('statusText').textContent = papers.length + ' papers';
   }
 }
 
-// ── Project workspace: parallel tabs (Papers / Tag Tree / Authors) ──
+// ── Theme workspace: parallel tabs (Papers / Tag Tree / Authors) ──
 const _TAG_CATEGORIES = [
   { key: 'problem', label: 'Problem' },
   { key: 'model', label: 'Model' },
@@ -2964,40 +2908,29 @@ const _TAG_CATEGORIES = [
 ];
 let _overviewTab = 'papers';
 
-// Papers covered by the active project(s): OR within a group, union across groups
+// Papers covered by the active tag filter (AND) — the theme's scope
 function _topicPapers() {
-  if (!activeGroups.length) return papers;
-  const groupTagNames = new Set();
-  const groupPaperIds = new Set();
-  const groups = (_perspectiveView && _perspectiveView.groups) || [];
-  for (const gid of activeGroups) {
-    const g = groups.find(x => x.group_id === gid);
-    if (g) {
-      g.tags.forEach(t => groupTagNames.add(t.name));
-      (g.paper_ids || []).forEach(pid => groupPaperIds.add(pid));
-    }
-  }
-  return papers.filter(p =>
-    (p.tags || []).some(t => groupTagNames.has(t)) || groupPaperIds.has(p.id));
+  if (!activeTags.length) return papers;
+  return papers.filter(p => activeTags.every(t => (p.tags || []).includes(t)));
 }
 
 function _topicName() {
-  const groups = (_perspectiveView && _perspectiveView.groups) || [];
-  const names = activeGroups
-    .map(gid => (groups.find(x => x.group_id === gid) || {}).group_name)
-    .filter(Boolean);
-  return names.join(' + ') || 'Projects';
+  return activeTags.join(' + ') || 'All papers';
+}
+
+// A focused theme tag is the new "selected project"
+function _topicOn() {
+  return tags.some(t => t.is_top && activeTags.includes(t.name));
 }
 
 function _cssToken(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// Tabs exist only while a project is active; leaving project mode
-// always falls back to the paper list
-// The tab bar is permanent; tree tabs enable only with an active project
+// The tab bar is permanent; tree tabs enable only with a focused theme,
+// and leaving theme mode always falls back to the paper list
 function _syncWorkspaceTabs() {
-  const on = activeGroups.length > 0;
+  const on = _topicOn();
   document.getElementById('wsTagsTab').disabled = !on;
   document.getElementById('wsAuthorsTab').disabled = !on;
   if (!on && _overviewTab !== 'papers') setOverviewTab('papers');
@@ -3112,12 +3045,12 @@ function _renderOvTree(canvas, rootLabel, rootCount, branches, handlers, branchC
   }
 }
 
-// Tag tree: project root → Problem/Model/Algorithm → tags.
+// Tag tree: theme root → Problem/Model/Algorithm → tags.
 // Counts manual AND auto tags (imports often carry auto tags only);
 // auto-only tags render with a dashed border.
 function renderTagTree() {
   const canvas = document.getElementById('tagTreeCanvas');
-  if (!canvas || _overviewTab !== 'tags' || !activeGroups.length) return;
+  if (!canvas || _overviewTab !== 'tags' || !_topicOn()) return;
   const topicPapers = _topicPapers();
 
   const tagCounts = {};
@@ -3135,10 +3068,10 @@ function renderTagTree() {
     canvas.innerHTML = '<div class="ws-tree-empty">No tags on these papers yet.<br><span class="ov-action" onclick="autoTagTopic()">✦ Auto-tag with AI</span> or add tags in a paper\'s detail panel.</div>';
     return;
   }
-  // Category lookup: sidebar snapshot first, full tag table (incl. auto) fallback
+  // Category lookup from the sidebar snapshot (+ expanded co-occurrence lists)
   const catOf = {};
-  for (const t of _tagTree) catOf[t.name] = t.category;
   for (const t of tags) catOf[t.name] = t.category;
+  for (const kids of Object.values(_cooc)) for (const t of kids) catOf[t.name] = t.category;
   const buckets = { problem: [], model: [], algorithm: [], none: [] };
   for (const [name, count] of Object.entries(tagCounts)) {
     const key = ['problem', 'model', 'algorithm'].includes(catOf[name]) ? catOf[name] : 'none';
@@ -3190,8 +3123,9 @@ function renderTagTree() {
 }
 
 function _ovTagMenuAt(x, y, tagName) {
-  // Sidebar snapshot first, full tag table (incl. auto tags) fallback
-  const tag = tags.find(t => t.name === tagName) || _tagTree.find(t => t.name === tagName);
+  // Sidebar snapshot first, then the expanded co-occurrence lists
+  const tag = tags.find(t => t.name === tagName)
+    || Object.values(_cooc).flat().find(t => t.name === tagName);
   if (!tag) return;
   const items = _TAG_CATEGORIES.map(c => ({
     label: `${tag.category === c.key ? '● ' : '→ '}${c.label}`,
@@ -3208,15 +3142,17 @@ async function _setTagCategory(tagId, category) {
   if (!d.ok) return;
   const tag = tags.find(t => t.id === tagId);
   if (tag) tag.category = category || null;
-  const tt = _tagTree.find(t => t.id === tagId);
-  if (tt) tt.category = category || null;
+  for (const kids of Object.values(_cooc)) {
+    const kt = kids.find(t => t.id === tagId);
+    if (kt) kt.category = category || null;
+  }
   if (_overviewTab === 'tags') renderTagTree();
 }
 
-// Author tree: project root → institutions → authors
+// Author tree: theme root → institutions → authors
 function renderAuthorTree() {
   const canvas = document.getElementById('authorTreeCanvas');
-  if (!canvas || _overviewTab !== 'authors' || !activeGroups.length) return;
+  if (!canvas || _overviewTab !== 'authors' || !_topicOn()) return;
   const topicPapers = _topicPapers();
 
   const authorTotal = {};
@@ -3366,10 +3302,9 @@ document.getElementById('searchInput').addEventListener('input', async (e) => {
   clearTimeout(searchTimeout);
   const q = e.target.value.trim();
   if (!q) { loadPapers(); return; }
-  // Searching clears any project/tag filter so list and sidebar stay consistent
-  if (activeTags.length || activeGroups.length) {
+  // Searching clears any tag filter so list and sidebar stay consistent
+  if (activeTags.length) {
     activeTags = [];
-    activeGroups = [];
     _overviewTags = [];
     _overviewAuthor = null;
     renderTags();
@@ -3431,13 +3366,22 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
   let startX = 0;
   let startWidth = 0;
   let targetCol = null;
+  const lastWidths = {};
+  const COLLAPSE_AT = 120;
+
+  function isCollapsed(col) { return col.style.display === 'none'; }
 
   function onMouseDown(e, handle, col) {
     e.preventDefault();
     activeHandle = handle;
     targetCol = col;
     startX = e.clientX;
-    startWidth = col.offsetWidth;
+    if (isCollapsed(col)) {
+      startWidth = lastWidths[col.id] || 300;
+    } else {
+      startWidth = col.offsetWidth;
+      lastWidths[col.id] = startWidth;
+    }
     handle.classList.add('active');
     document.body.style.cursor = 'col-resize';
     document.addEventListener('mousemove', onMouseMove);
@@ -3447,10 +3391,30 @@ document.getElementById('chatInput').addEventListener('keydown', function(e) {
   function onMouseMove(e) {
     if (!activeHandle || !targetCol) return;
     const dx = e.clientX - startX;
+    // Collapsed column re-expands on a reverse drag, re-anchored at its
+    // last width so the gesture continues smoothly from there.
+    if (isCollapsed(targetCol)) {
+      if (dx > 10) {
+        targetCol.style.display = '';
+        targetCol.style.width = (lastWidths[targetCol.id] || 300) + 'px';
+        startX = e.clientX;
+      }
+      return;
+    }
     const minW = parseInt(getComputedStyle(targetCol).minWidth) || 160;
     const maxW = parseInt(getComputedStyle(targetCol).maxWidth) || 600;
-    const newW = Math.min(maxW, Math.max(minW, startWidth + dx));
+    const wanted = startWidth + dx;
+    // Dragged past the collapse threshold: fold the column away entirely.
+    if (wanted < COLLAPSE_AT) { targetCol.style.display = 'none'; return; }
+    const newW = Math.min(maxW, Math.max(minW, wanted));
     targetCol.style.width = newW + 'px';
+    // Right handle dragged past the papers max keeps squeezing the detail
+    // panel; once it bottoms out, fold it too (any paper click reopens it).
+    if (activeHandle === handle2 && dx > 0 && newW === maxW
+        && dx - (maxW - startWidth) > 40) {
+      const det = document.getElementById('colDetail');
+      if (det.offsetWidth > 0) _hideDetail();
+    }
   }
 
   function onMouseUp() {
@@ -3729,27 +3693,15 @@ async function exportPapersBibtex(ids, defaultName) {
 async function exportBibtex() {
   await exportPapersBibtex(null, 'library.bib');
 }
-async function exportGroupBibtex(groupId, groupName) {
-  const ids = _groupPaperIds(groupId);
-  if (!ids.length) { toast('No papers in this project', 'info'); return; }
-  const fname = groupName.trim().replace(/[\\/:*?"<>|]/g, '') + '.bib';
-  await exportPapersBibtex(ids, fname);
-}
 async function ctxExportBib() {
+  // Bulk path: the menu was opened inside a Cmd+click multi-selection
+  if (_multiSel.size > 1 && _multiSel.has(_ctxPaperId)) {
+    await exportPapersBibtex([..._multiSel], 'selection.bib');
+    return;
+  }
   const p = papers.find(x => x.id === _ctxPaperId);
   const base = p ? p.title.replace(/[\\/:*?"<>|]/g, '').trim().replace(/\s+/g, '_').slice(0, 60) : '';
   await exportPapersBibtex([_ctxPaperId], (base || 'paper') + '.bib');
-}
-// Make a project the sole active filter unless it already is, so imports
-// launched from its context menu are filed into it (addPapersToActiveGroups).
-function _ensureGroupActive(groupId) {
-  if (activeGroups.includes(groupId)) return;
-  activeGroups = [groupId];
-  activeTags = [];
-  _overviewTags = [];
-  _overviewAuthor = null;
-  renderTags();
-  applyFilters();
 }
 
 // ── Drag & Drop ───────────────────────────────────────
@@ -3757,26 +3709,10 @@ function _ensureGroupActive(groupId) {
 // unreliable in WKWebView, so we fall back to this when it misses.
 let _lastDropTarget = null;
 
-// Human label of the active project(s), for the drop-zone overlay text
-function _activeGroupLabel() {
-  if (!activeGroups.length) return '';
-  const groups = (_perspectiveView && _perspectiveView.groups) || [];
-  if (activeGroups.length === 1) {
-    const g = groups.find(x => x.group_id === activeGroups[0]);
-    return g ? ' into "' + (g.group_name || g.name) + '"' : ' into the active project';
-  }
-  return ' into ' + activeGroups.length + ' projects';
-}
-
-// Where a PDF drag may land: a project row (imports into that project)
-// or the papers column (imports into the currently active project).
+// Where a PDF drag may land: the papers column.
 function _dropTarget(e) {
   const t = e.target;
   if (!(t instanceof Element)) return null;
-  const row = t.closest('.project-row');
-  if (row && row.dataset.gid) {
-    return { kind: 'project', gid: row.dataset.gid, name: row.dataset.gname || 'project' };
-  }
   if (t.closest('#colPapers')) return { kind: 'papers' };
   return null;
 }
@@ -3812,26 +3748,14 @@ function _dropTarget(e) {
     if (!tgt) {
       // No preventDefault → the browser shows its "not allowed" cursor
       _lastDropTarget = null;
-      document.querySelectorAll('.project-row.drop-hover')
-        .forEach(rEl => rEl.classList.remove('drop-hover'));
       if (overlay.classList.contains('drag-mode')) overlay.classList.remove('active');
       return;
     }
     e.preventDefault();
     _lastDropTarget = tgt;
-    // Visually mark the hovered project row so the landing zone is obvious
-    document.querySelectorAll('.project-row.drop-hover')
-      .forEach(rEl => rEl.classList.remove('drop-hover'));
-    if (tgt.kind === 'project') {
-      const row = e.target instanceof Element ? e.target.closest('.project-row') : null;
-      if (row) row.classList.add('drop-hover');
-    }
     if (overlay.classList.contains('drag-mode')) {
-      const text = tgt.kind === 'project'
-        ? 'Drop to import into "' + tgt.name + '"'
-        : 'Drop PDFs to import' + _activeGroupLabel();
       document.getElementById('overlayIcon').innerHTML = _OV_ICONS.doc;
-      document.getElementById('overlayText').textContent = text;
+      document.getElementById('overlayText').textContent = 'Drop PDFs to import';
       document.getElementById('progressWrap').style.display = 'none';
       document.getElementById('progressLabel').style.display = 'none';
       overlay.classList.add('active');
@@ -3842,18 +3766,15 @@ function _dropTarget(e) {
     e.preventDefault();
     dragCounter = 0;
 
-    // Drops only land on a project row or the paper list; anywhere else
-    // (toolbar, detail panel, blank chrome) is ignored. WKWebView can hand
-    // us a bogus drop target, so fall back to the last hovered zone.
+    // Drops only land on the paper list; anywhere else (toolbar, detail
+    // panel, blank chrome) is ignored. WKWebView can hand us a bogus drop
+    // target, so fall back to the last hovered zone.
     const tgt = _dropTarget(e) || _lastDropTarget;
     _lastDropTarget = null;
-    document.querySelectorAll('.project-row.drop-hover')
-      .forEach(rEl => rEl.classList.remove('drop-hover'));
     if (!tgt) {
       if (overlay.classList.contains('drag-mode')) overlay.classList.remove('active');
       return;
     }
-    if (tgt.kind === 'project') _ensureGroupActive(tgt.gid);
 
     if (!e.dataTransfer || !e.dataTransfer.files.length) return;
 
@@ -3885,7 +3806,6 @@ function _dropTarget(e) {
     }
 
     updateProgress(total, total, 'Done!');
-    await addPapersToActiveGroups(filedIds);
     clearTagFilterForImports();
     await loadPapers();
     await loadTags();
@@ -4088,6 +4008,8 @@ document.addEventListener('keydown', (e) => {
         return;
       }
     }
+    // Bulk selection clears first; pressing Escape again deselects the paper
+    if (_multiSel.size) { ctxClearSel(); return; }
     // If no dialog open, deselect paper
     if (selectedPaper) {
       selectedPaper = null;
@@ -4272,63 +4194,64 @@ function showCtxMenu(e, paperId) {
   _ctxPaperId = paperId;
   _ctxTagName = null;
   const menu = document.getElementById('ctxMenu');
-  // Show/hide PDF option
   const p = papers.find(x => x.id === paperId);
   const hasPdf = !!(p && p.pdf_path);
-  document.getElementById('ctxOpenItem').style.display = hasPdf ? '' : 'none';
-  document.getElementById('ctxRevealItem').style.display = hasPdf ? '' : 'none';
+  // Right-clicking inside a multi-selection acts on the whole set;
+  // right-clicking outside collapses it to the clicked paper (Finder semantics)
+  const multi = _multiSel.size > 1 && _multiSel.has(paperId);
+  if (!multi && _multiSel.size) ctxClearSel();
+  menu.querySelectorAll('.single-only').forEach(el => { el.style.display = multi ? 'none' : ''; });
+  document.getElementById('ctxOpenItem').style.display = (!multi && hasPdf) ? '' : 'none';
+  document.getElementById('ctxRevealItem').style.display = (!multi && hasPdf) ? '' : 'none';
+  document.getElementById('ctxExportLabel').textContent = multi ? `Export BibTeX (${_multiSel.size})` : 'Export BibTeX';
+  document.getElementById('ctxClearSelItem').style.display = multi ? '' : 'none';
   menu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
   menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
   menu.classList.add('active');
 }
 
-function showCtxMenuTag(e, tagName) {
+// Sidebar tag right-click: rename/merge, top-level toggle, detach, delete
+function showTagMenu(e, tagId) {
   e.preventDefault();
   e.stopPropagation();
-  _ctxTagName = tagName;
-  _ctxPaperId = null;
-  const action = prompt(
-    `Tag: "${tagName}"\n\nActions:\n• Type new name to RENAME\n• Type "theme:name" to MOVE under a theme\n  e.g. "theme:空箱调运"\n• Type another tag name to MERGE\n• Leave empty to Cancel`,
-    ''
-  );
-  if (!action || !action.trim()) return;
-  const val = action.trim();
-
-  if (val.startsWith('theme:')) {
-    // Move under theme
-    const themeName = val.slice(6).trim();
-    if (themeName) {
-      pywebview.api.set_tag_parent(tagName, themeName).then(() => {
-        loadTags();
-        document.getElementById('statusText').textContent = `Moved "${tagName}" under "${themeName}"`;
-      });
-    }
-  } else if (val.startsWith('unparent')) {
-    // Remove from theme
-    pywebview.api.set_tag_parent(tagName, '').then(() => {
-      loadTags();
-      document.getElementById('statusText').textContent = `Moved "${tagName}" to top level`;
-    });
-  } else {
-    const existingTag = tags.find(t => t.name === val || t.display_name === val);
-    if (existingTag && existingTag.name !== tagName) {
-      if (confirm(`Merge "${tagName}" → "${val}"?`)) {
-        pywebview.api.rename_tag(tagName, val).then(() => {
-          loadTags();
-          loadPapers();
-          refreshAfterTagRename(tagName, val);
-          document.getElementById('statusText').textContent = `Merged "${tagName}" → "${val}"`;
-        });
-      }
-    } else {
-      pywebview.api.rename_tag(tagName, val).then(() => {
+  const tag = tags.find(t => t.id === tagId)
+    || Object.values(_cooc).flat().find(t => t.id === tagId);
+  if (!tag) return;
+  const items = [
+    { icon: _MI.rename, label: 'Rename…', action: () => {
+      const name = prompt('Rename tag (type an existing tag name to merge into it):', tag.name);
+      if (!name || !name.trim() || name.trim() === tag.name) return;
+      const raw = name.trim();
+      const existing = tags.find(t => t.name !== tag.name && t.name === raw);
+      if (existing && !confirm(`Merge "${tag.name}" → "${raw}"?`)) return;
+      pywebview.api.rename_tag(tag.name, raw).then(() => {
+        refreshAfterTagRename(tag.name, raw);
         loadTags();
         loadPapers();
-        refreshAfterTagRename(tagName, val);
-        document.getElementById('statusText').textContent = `Renamed "${tagName}" → "${val}"`;
+        document.getElementById('statusText').textContent =
+          (existing ? 'Merged "' : 'Renamed "') + tag.name + '" → "' + raw + '"';
       });
-    }
-  }
+    } },
+    { icon: _MI.star, label: tag.is_top ? '取消一级标签' : '设为一级标签', action: () => {
+      api('set_tag_top', tag.id, !tag.is_top).then(() => loadTags());
+    } },
+    ...(tag.parent_id ? [{ icon: _MI.minus, label: '脱离父标签', action: () => {
+      api('set_tag_parent', tag.id, null).then(() => loadTags());
+    } }] : []),
+    { icon: _MI.trash, label: 'Delete Tag', danger: true, action: () => {
+      if (!confirm(`Delete tag "${tag.name}" from all papers?`)) return;
+      api('delete_tag', tag.id).then(() => {
+        if (activeTags.includes(tag.name)) {
+          activeTags = activeTags.filter(t => t !== tag.name);
+        }
+        _expandedTags.delete(tag.id);
+        loadTags();
+        loadPapers();
+        toast(`Tag "${tag.name}" deleted`, 'success');
+      });
+    } },
+  ];
+  showActionMenu(e.clientX, e.clientY, items);
 }
 
 // Keep the active tag filter valid after a rename/merge
@@ -4356,6 +4279,7 @@ const _MI = {
   rename: 'M9.5 2.5l4 4L6 14H2v-4zM8 4l4 4',
   plus: 'M8 3v10M3 8h10',
   minus: 'M3 8h10',
+  star: 'M8 2l1.8 3.8 4.2.6-3 3 .7 4.2L8 11.6 4.3 13.6l.7-4.2-3-3 4.2-.6z',
   book: 'M3 3.2A1.7 1.7 0 0 1 4.7 1.5H13V13H4.7A1.7 1.7 0 0 0 3 14.7zM3 14.7A1.7 1.7 0 0 1 4.7 13H13v1.5H4.7',
   upload: 'M8 10.5V2.8M5 5.8 8 2.8l3 3M2.5 10.5v2c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-2',
   trash: 'M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9c0 .8.7 1.5 1.5 1.5h3.6c.8 0 1.5-.7 1.5-1.5L12 4M6.7 7v4.5M9.3 7v4.5',
@@ -4378,114 +4302,12 @@ function _actionMenuRun(i) {
   if (it && it.action) it.action();
 }
 
-// ── Project & perspective context menus (click-style) ────
-
-function _groupMembers(groupId) {
-  const g = ((_perspectiveView && _perspectiveView.groups) || []).find(x => x.group_id === groupId);
-  return (g && g.tags) || [];
-}
-
-function _groupPaperIds(groupId) {
-  const g = ((_perspectiveView && _perspectiveView.groups) || []).find(x => x.group_id === groupId);
-  return (g && g.paper_ids) || [];
-}
-
-function _showGroupPaperMenu(x, y, groupId, groupName) {
-  pywebview.api.get_group_papers(groupId).then(r => {
-    const list = JSON.parse(r);
-    const items = [{ label: `« Back to "${groupName}"`, action: () => _showGroupMenu(x, y, groupId, groupName) }];
-    for (const p of list) {
-      const t = p.title.length > 42 ? p.title.slice(0, 42) + '…' : p.title;
-      items.push({ label: `− ${t}`, action: () => {
-        api('remove_paper_from_group', p.paper_id, groupId).then(() => { loadTags(); applyFilters(); });
-      } });
-    }
-    showActionMenu(x, y, items);
-  });
-}
-
-function showCtxMenuGroup(e, groupId, groupName) {
-  e.preventDefault();
-  e.stopPropagation();
-  _showGroupMenu(e.clientX, e.clientY, groupId, groupName);
-}
-
-function _showGroupMenu(x, y, groupId, groupName) {
-  const items = [
-    { icon: _MI.rename, label: 'Rename', action: () => {
-      const name = prompt('New project name:', groupName);
-      if (name && name.trim()) api('rename_group', groupId, name.trim()).then(() => loadTags());
-    } },
-    { icon: _MI.plus, label: 'Add Tag…', action: () => {
-      const t = prompt(`Tag name to add to "${groupName}":`);
-      if (t && t.trim()) addTagToGroup(groupId, t.trim());
-    } },
-  ];
-  if (_groupMembers(groupId).length > 0) {
-    items.push({ icon: _MI.minus, label: 'Remove Tag…', action: () => _showGroupTagMenu(x, y, groupId, groupName) });
-  }
-  if (_groupPaperIds(groupId).length > 0) {
-    items.push({ icon: _MI.minus, label: 'Remove Paper…', action: () => _showGroupPaperMenu(x, y, groupId, groupName) });
-  }
-  items.push({ icon: _MI.book, label: 'Import BibTeX…', action: () => {
-    _ensureGroupActive(groupId);
-    importBibtex();
-  } });
-  if (_groupPaperIds(groupId).length > 0) {
-    items.push({ icon: _MI.upload, label: 'Export .bib', action: () => exportGroupBibtex(groupId, groupName) });
-  }
-  items.push({ icon: _MI.trash, label: 'Delete', danger: true, action: () => {
-    if (!confirm(`Delete project "${groupName}"?\nTags stay on their papers; only the project is removed.`)) return;
-    api('delete_group', groupId).then(() => {
-      activeGroups = activeGroups.filter(g => g !== groupId);
-      _overviewTags = [];
-      _overviewAuthor = null;
-      loadTags();
-      applyFilters();
-      toast('Project deleted', 'success');
-    });
-  } });
-  showActionMenu(x, y, items);
-}
-
-function _showGroupTagMenu(x, y, groupId, groupName) {
-  const items = [{ label: `« Back to "${groupName}"`, action: () => _showGroupMenu(x, y, groupId, groupName) }];
-  for (const t of _groupMembers(groupId)) {
-    items.push({ label: `− ${t.display_name || t.name}`, action: () => removeTagFromGroup(groupId, t.name) });
-  }
-  showActionMenu(x, y, items);
-}
-
-// Blank-space context menu for the sidebar (rows/tabs intercept their own right-clicks)
+// Blank-space context menu for the sidebar (rows intercept their own right-clicks)
 function showCtxMenuSidebar(e) {
   e.preventDefault();
   showActionMenu(e.clientX, e.clientY, [
-    { icon: _MI.plus, label: 'New Project', action: () => createGroupInPerspective() },
+    { icon: _MI.plus, label: 'New Theme Tag', action: () => createTheme() },
   ]);
-}
-
-function showCtxMenuPerspective(e, perspectiveId) {
-  e.preventDefault();
-  e.stopPropagation();
-  const items = [
-    { icon: _MI.rename, label: 'Rename', action: () => {
-      const name = prompt('New perspective name:');
-      if (name && name.trim()) api('rename_perspective', perspectiveId, name.trim()).then(() => loadTags());
-    } },
-    { icon: _MI.trash, label: 'Delete', danger: true, action: () => {
-      if (!confirm('Delete this perspective and all its projects?')) return;
-      api('delete_perspective', perspectiveId).then(() => {
-        if (activePerspective === perspectiveId) activePerspective = null;
-        // Reset any filter inherited from the deleted perspective
-        activeTags = [];
-        activeGroups = [];
-        loadTags();
-        loadPapers();
-        toast('Perspective deleted', 'success');
-      });
-    } },
-  ];
-  showActionMenu(e.clientX, e.clientY, items);
 }
 
 async function ctxOpenPdf() {
@@ -4542,7 +4364,12 @@ async function ctxCopyDoi() {
   hideCtxMenu();
 }
 
-function ctxRenameTag() { hideCtxMenu(); /* handled in showCtxMenuTag */ }
+function ctxRenameTag() { hideCtxMenu(); /* tag rename lives in the sidebar tag menu */ }
+
+function ctxClearSel() {
+  _multiSel.clear();
+  applyFilters(); // restores the regular status line
+}
 
 async function ctxDelete() {
   if (_ctxPaperId) {

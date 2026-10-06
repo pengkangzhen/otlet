@@ -1,6 +1,6 @@
-from agent_lit.agents.classify import ClassifyAgent
-from agent_lit.agents.search import SearchAgent
-from agent_lit.llm.provider import LLMProvider
+from otlet.agents.classify import ClassifyAgent
+from otlet.agents.search import SearchAgent
+from otlet.llm.provider import LLMProvider
 
 
 def test_search_agent_instantiation():

@@ -1,3 +1,3 @@
-from agent_lit.config.settings import Settings
+from otlet.config.settings import Settings
 
 __all__ = ["Settings"]

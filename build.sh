@@ -1,14 +1,14 @@
 #!/bin/bash
-# Build Agent-Lit macOS app bundle
+# Build Otlet macOS app bundle
 set -e
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DIST="$ROOT/dist"
-APP="$DIST/Agent-Lit.app"
+APP="$DIST/Otlet.app"
 VERSION="$(grep '^version' "$ROOT/pyproject.toml" | head -1 | sed 's/.*= *"\(.*\)".*/\1/')"
 
-echo "==> Building Agent-Lit v${VERSION:-0.1.0}..."
-uv run --no-sync pyinstaller agent-lit.spec --clean --noconfirm
+echo "==> Building Otlet v${VERSION:-0.1.0}..."
+uv run --no-sync pyinstaller otlet.spec --clean --noconfirm
 
 echo "==> Creating .app bundle..."
 rm -rf "$APP"
@@ -18,7 +18,7 @@ mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
 # Copy onedir output into MacOS/ (executable + _internal/)
-cp -R "$DIST/agent-lit/"* "$APP/Contents/MacOS/"
+cp -R "$DIST/otlet/"* "$APP/Contents/MacOS/"
 
 # PyInstaller inside .app/Contents/MacOS/ looks for libraries at
 # ../Frameworks/ and data at ../Resources/ — symlink _internal there
@@ -31,13 +31,13 @@ cat > "$APP/Contents/Info.plist" << PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>agent-lit</string>
+    <string>otlet</string>
     <key>CFBundleIdentifier</key>
-    <string>com.agent-lit.app</string>
+    <string>com.otlet.app</string>
     <key>CFBundleName</key>
-    <string>Agent-Lit</string>
+    <string>Otlet</string>
     <key>CFBundleDisplayName</key>
-    <string>Agent-Lit</string>
+    <string>Otlet</string>
     <key>CFBundleVersion</key>
     <string>${VERSION:-0.1.0}</string>
     <key>CFBundleShortVersionString</key>
@@ -53,7 +53,7 @@ cat > "$APP/Contents/Info.plist" << PLIST
     <key>LSUIElement</key>
     <false/>
     <key>NSHumanReadableCopyright</key>
-    <string>© 2026 Agent-Lit. All rights reserved.</string>
+    <string>© 2026 Otlet. All rights reserved.</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <false/>
     <key>CFBundleIconFile</key>

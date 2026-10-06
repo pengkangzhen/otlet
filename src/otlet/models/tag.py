@@ -4,16 +4,16 @@ from pydantic import BaseModel, Field
 
 
 class Tag(BaseModel):
-    """Represents a tag for organizing papers.
-
-    Supports hierarchical tags via parent_id, enabling tree-like
-    tag structures (e.g., 'method/RL', 'topic/NLP').
+    """A tag. is_top marks research themes (top-level sidebar entries);
+    parent_id stores manual nesting (a tag dragged onto another tag).
+    Free tags (neither top nor nested) surface via co-occurrence.
     """
 
     id: str
     name: str
-    parent_id: str | None = None
     color: str | None = None
+    is_top: bool = False
+    parent_id: str | None = None
     # Research-facet classification used by the project overview panel:
     # 'problem' | 'model' | 'algorithm' | None (uncategorized)
     category: str | None = None

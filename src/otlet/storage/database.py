@@ -3,22 +3,36 @@
 import functools
 import json
 import re
+import shutil
 import sqlite3
 import threading
 import uuid
+import zlib
 from pathlib import Path
 from typing import Sequence
 
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
-from agent_lit.models.tag import Tag
+from otlet.models.author import Author
+from otlet.models.paper import Paper
+from otlet.models.tag import Tag
+
+_DOI_URL_PREFIX = re.compile(r"^https?://(dx\.)?doi\.org/", re.IGNORECASE)
+
+
+def normalize_doi(doi: str | None) -> str | None:
+    """Canonical form for dedup/storage: strip the resolver URL, lowercase."""
+    if not doi:
+        return None
+    norm = _DOI_URL_PREFIX.sub("", doi.strip()).strip().lower()
+    return norm or None
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS tags (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
-    parent_id   TEXT REFERENCES tags(id),
     color       TEXT,
+    is_top      INTEGER DEFAULT 0,   -- 1 = research theme (top-level)
+    parent_id   TEXT REFERENCES tags(id) ON DELETE SET NULL,  -- manual nesting
+    category    TEXT,                -- 'problem' | 'model' | 'algorithm'
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
@@ -49,6 +63,7 @@ CREATE TABLE IF NOT EXISTS papers (
     citation_count INTEGER,
     added_date  TEXT DEFAULT (date('now')),
     pdf_path    TEXT,
+    pdf_fingerprint TEXT,
     bibtex_key  TEXT,
     paper_type  TEXT,
     is_deleted  INTEGER DEFAULT 0,
@@ -86,47 +101,32 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
     id              TEXT PRIMARY KEY,
     conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
-    role            TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    role            TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'tool')),
     content         TEXT NOT NULL,
+    tool_call_id    TEXT,               -- pairs a tool message with its call
+    tool_name       TEXT,
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
--- Multi-perspective tag system
-CREATE TABLE IF NOT EXISTS perspectives (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    icon        TEXT DEFAULT '',
-    sort_order  INTEGER DEFAULT 0,
-    created_at  TEXT DEFAULT (datetime('now'))
+-- Per-page PDF text: authoritative copy (compressed) for page reads
+CREATE TABLE IF NOT EXISTS pdf_text (
+    paper_id    TEXT PRIMARY KEY REFERENCES papers(id) ON DELETE CASCADE,
+    page_count  INTEGER NOT NULL,
+    pages       BLOB NOT NULL,          -- zlib JSON array of page texts
+    updated_at  TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS tag_groups (
-    id              TEXT PRIMARY KEY,
-    perspective_id  TEXT NOT NULL REFERENCES perspectives(id) ON DELETE CASCADE,
-    name            TEXT NOT NULL,
-    sort_order      INTEGER DEFAULT 0,
-    created_at      TEXT DEFAULT (datetime('now'))
+-- Searchable mirror of pdf_text, one row per page.
+-- trigram tokenizer = substring semantics, works for CJK and Latin alike.
+CREATE VIRTUAL TABLE IF NOT EXISTS pdf_fts USING fts5(
+    paper_id UNINDEXED, page UNINDEXED, text, tokenize='trigram'
 );
-
-CREATE TABLE IF NOT EXISTS tag_group_members (
-    group_id    TEXT NOT NULL REFERENCES tag_groups(id) ON DELETE CASCADE,
-    tag_id      TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (group_id, tag_id)
-);
-
-CREATE TABLE IF NOT EXISTS group_papers (
-    group_id  TEXT NOT NULL REFERENCES tag_groups(id) ON DELETE CASCADE,
-    paper_id  TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
-    PRIMARY KEY (group_id, paper_id)
-);
-CREATE INDEX IF NOT EXISTS idx_group_papers_paper ON group_papers(paper_id);
 
 CREATE INDEX IF NOT EXISTS idx_paper_tags_tag ON paper_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_paper_tags_paper ON paper_tags(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_notes_paper ON paper_notes(paper_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_paper ON conversations(paper_id);
-CREATE INDEX IF NOT EXISTS idx_tag_groups_perspective ON tag_groups(perspective_id);
 """
 
 # Migrations for existing databases
@@ -143,6 +143,8 @@ _MIGRATIONS = [
     "ALTER TABLE papers ADD COLUMN publisher TEXT",
     "ALTER TABLE papers ADD COLUMN language TEXT",
     "ALTER TABLE tags ADD COLUMN category TEXT",
+    "ALTER TABLE tags ADD COLUMN is_top INTEGER DEFAULT 0",
+    "ALTER TABLE papers ADD COLUMN pdf_fingerprint TEXT",
 ]
 
 # Research-facet classification for the project overview tag tree
@@ -173,7 +175,7 @@ def _locked(func):
 
 
 class Database:
-    """Manages the SQLite database for agent-lit."""
+    """Manages the SQLite database for otlet."""
 
     def __init__(self, db_path: Path) -> None:
         self._path = db_path
@@ -188,7 +190,15 @@ class Database:
             self._conn.execute("PRAGMA busy_timeout=5000")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.row_factory = sqlite3.Row
+            had_tags = self._conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags'"
+            ).fetchone() is not None
             self._conn.executescript(_SCHEMA)
+            if not had_tags:
+                # Born at the current schema — stamp the tag-model generation
+                # so the legacy fold never misreads the manual nesting column
+                # as the legacy parent_id hierarchy
+                self._conn.execute("PRAGMA user_version = 3")
             # Run migrations (ignore errors if column already exists)
             for sql in _MIGRATIONS:
                 try:
@@ -209,6 +219,35 @@ class Database:
                     self._conn.commit()
             except sqlite3.OperationalError:
                 pass
+            # One-time: fold perspectives/groups + the legacy parent_id
+            # hierarchy into flat tags with an is_top flag
+            self._migrate_tag_model()
+            # The nesting column returns *after* the fold: on a legacy
+            # database the old hierarchy is folded away first, and the new
+            # column starts empty with drag-and-drop nesting semantics
+            try:
+                self._conn.execute(
+                    "ALTER TABLE tags ADD COLUMN parent_id TEXT "
+                    "REFERENCES tags(id) ON DELETE SET NULL"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists (fresh schema / v3 database)
+            # The index lives here, not in _SCHEMA: on a v2 database the
+            # column does not exist until the ALTER above has run
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tags_parent ON tags(parent_id)"
+            )
+            # Same reason as idx_tags_parent: legacy papers tables gain
+            # pdf_fingerprint via ALTER, after _SCHEMA has run
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_papers_fingerprint "
+                "ON papers(pdf_fingerprint)"
+            )
+            # One-time: widen messages to carry tool messages (agent loop),
+            # and normalize stored DOIs to the canonical resolver-free form
+            self._migrate_messages_table()
+            self._normalize_stored_dois()
+            self._conn.execute("PRAGMA user_version = 3")
             # Merge duplicate tags on startup (only if explicitly requested)
             # self.merge_duplicate_tags()
         except sqlite3.Error as e:
@@ -228,22 +267,16 @@ class Database:
     # ── Tags ──────────────────────────────────────────────────
 
     @_locked
-    def create_tag(
-        self,
-        name: str,
-        *,
-        parent_id: str | None = None,
-        color: str | None = None,
-    ) -> Tag:
+    def create_tag(self, name: str, *, color: str | None = None) -> Tag:
         norm = _normalize_tag_name(name)
         # Return existing tag if a normalized match already exists
         existing = self.get_tag_by_name(norm)
         if existing:
             return existing
-        tag = Tag(id=_new_id(), name=norm, parent_id=parent_id, color=color)
+        tag = Tag(id=_new_id(), name=norm, color=color)
         self._conn.execute(
-            "INSERT INTO tags (id, name, parent_id, color) VALUES (?, ?, ?, ?)",
-            (tag.id, tag.name, tag.parent_id, tag.color),
+            "INSERT INTO tags (id, name, color) VALUES (?, ?, ?)",
+            (tag.id, tag.name, tag.color),
         )
         self._conn.commit()
         return tag
@@ -267,8 +300,7 @@ class Database:
         """Tags visible in the sidebar.
 
         Without include_auto: only tags with at least one manual link to a
-        live paper, plus any tag placed in a group (curated by the user).
-        Auto-only ungrouped tags are hidden to keep the sidebar clean.
+        live paper. Auto-only tags are hidden to keep the sidebar clean.
         include_auto=True returns the full tag table.
         """
         if include_auto:
@@ -280,15 +312,72 @@ class Database:
                     SELECT 1 FROM paper_tags pt
                     JOIN papers p ON p.id = pt.paper_id AND p.is_deleted = 0
                     WHERE pt.tag_id = t.id AND pt.source = 'manual'
-                ) OR EXISTS (
-                    SELECT 1 FROM tag_group_members m WHERE m.tag_id = t.id
                 )
                 ORDER BY name"""
         ).fetchall()
         return [Tag(**dict(r)) for r in rows]
 
     @_locked
+    def list_tags_with_counts(self, include_auto: bool = False) -> list[dict]:
+        """Sidebar tag list: [{id, name, is_top, parent_id, category, color,
+        paper_count}].
+
+        Themes (is_top=1) sort first, then by live-paper count. Tags with
+        zero counted papers are omitted.
+        """
+        source_clause = "" if include_auto else "AND pt.source = 'manual'"
+        rows = self._conn.execute(
+            f"""SELECT t.id, t.name, t.is_top, t.parent_id, t.category, t.color,
+                       COUNT(p.id) AS paper_count
+                FROM tags t
+                LEFT JOIN paper_tags pt ON pt.tag_id = t.id {source_clause}
+                LEFT JOIN papers p ON p.id = pt.paper_id AND p.is_deleted = 0
+                GROUP BY t.id
+                HAVING paper_count > 0
+                ORDER BY t.is_top DESC, paper_count DESC, t.name"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    @_locked
+    def get_cooccurring_tags(
+        self, tag_id: str, *, include_auto: bool = False
+    ) -> list[dict]:
+        """Tags sharing at least one live paper with the given tag.
+
+        [{id, name, is_top, category, paper_count}] ordered by co-occurrence
+        count. This is the derived second level under a theme tag — the
+        sidebar tree is a query, not stored structure. Tags nested under a
+        manual parent (parent_id set via drag-and-drop) live under that
+        parent only and are excluded here.
+        """
+        source_clause = (
+            "" if include_auto
+            else "AND pt1.source = 'manual' AND pt2.source = 'manual'"
+        )
+        rows = self._conn.execute(
+            f"""SELECT t.id, t.name, t.is_top, t.parent_id, t.category,
+                       COUNT(*) AS paper_count
+                FROM paper_tags pt1
+                JOIN paper_tags pt2 ON pt2.paper_id = pt1.paper_id
+                JOIN tags t ON t.id = pt2.tag_id
+                JOIN papers p ON p.id = pt1.paper_id AND p.is_deleted = 0
+                WHERE pt1.tag_id = ? AND t.id != ? AND t.parent_id IS NULL
+                      {source_clause}
+                GROUP BY t.id
+                ORDER BY paper_count DESC, t.name""",
+            (tag_id, tag_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    @_locked
     def delete_tag(self, tag_id: str) -> None:
+        # Nested children climb to the deleted tag's level instead of
+        # being dropped to the root (and the tag's own parent is optional)
+        self._conn.execute(
+            """UPDATE tags SET parent_id = (SELECT parent_id FROM tags WHERE id = ?)
+               WHERE parent_id = ?""",
+            (tag_id, tag_id),
+        )
         self._conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
         self._conn.commit()
 
@@ -318,14 +407,15 @@ class Database:
     def add_paper(self, paper: Paper) -> Paper:
         if not paper.id:
             paper = paper.model_copy(update={"id": _new_id()})
+        paper.doi = normalize_doi(paper.doi)
 
         self._conn.execute(
             """INSERT OR IGNORE INTO papers
                (id, title, year, venue, volume, issue, pages, publisher,
                 language, doi, url, abstract,
                 keywords, citation_count, added_date,
-                pdf_path, bibtex_key, paper_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                pdf_path, pdf_fingerprint, bibtex_key, paper_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 paper.id,
                 paper.title,
@@ -343,6 +433,7 @@ class Database:
                 paper.citation_count,
                 paper.added_date,
                 paper.pdf_path,
+                paper.pdf_fingerprint,
                 paper.bibtex_key,
                 paper.paper_type,
             ),
@@ -377,10 +468,25 @@ class Database:
 
     @_locked
     def get_paper_by_doi(self, doi: str) -> Paper | None:
-        # DOIs are case-insensitive per DOI handbook — compare case-blind
+        # DOIs are stored normalized (resolver-free, lowercase) at write
+        # time, so a plain equality hits the UNIQUE index
+        norm = normalize_doi(doi)
+        if not norm:
+            return None
         row = self._conn.execute(
-            "SELECT * FROM papers WHERE LOWER(doi) = LOWER(?) AND is_deleted = 0",
-            (doi,),
+            "SELECT * FROM papers WHERE doi = ? AND is_deleted = 0",
+            (norm,),
+        ).fetchone()
+        if not row:
+            return None
+        return self._row_to_paper(row)
+
+    @_locked
+    def get_paper_by_fingerprint(self, fingerprint: str) -> Paper | None:
+        """Exact-file lookup: same PDF bytes → same SHA-256."""
+        row = self._conn.execute(
+            "SELECT * FROM papers WHERE pdf_fingerprint = ? AND is_deleted = 0",
+            (fingerprint,),
         ).fetchone()
         if not row:
             return None
@@ -415,8 +521,10 @@ class Database:
         """Update one or more paper fields."""
         allowed = {"title", "year", "venue", "volume", "issue", "pages",
                    "publisher", "language", "doi", "url", "abstract",
-                   "paper_type", "pdf_path"}
+                   "paper_type", "pdf_path", "pdf_fingerprint"}
         updates = {k: v for k, v in fields.items() if k in allowed}
+        if "doi" in updates:
+            updates["doi"] = normalize_doi(updates["doi"])
         if not updates:
             return
         set_clause = ", ".join(f"{k} = ?" for k in updates)
@@ -444,11 +552,6 @@ class Database:
                     "SELECT paper_id, ? FROM paper_tags WHERE tag_id = ?",
                     (existing.id, old_tag.id),
                 )
-                # Also re-parent children of old tag
-                self._conn.execute(
-                    "UPDATE tags SET parent_id = ? WHERE parent_id = ?",
-                    (existing.id, old_tag.id),
-                )
                 self._conn.execute(
                     "DELETE FROM paper_tags WHERE tag_id = ?", (old_tag.id,)
                 )
@@ -461,283 +564,259 @@ class Database:
         self._conn.commit()
 
     @_locked
-    def set_tag_parent(self, tag_name: str, parent_name: str | None) -> None:
-        """Set a tag's parent (for hierarchy). None = top-level theme."""
-        tag = self.get_tag_by_name(_normalize_tag_name(tag_name))
-        if not tag:
-            return
-        parent_id = None
-        if parent_name:
-            parent = self.get_tag_by_name(_normalize_tag_name(parent_name))
-            if not parent:
-                parent = self.create_tag(parent_name)
-            parent_id = parent.id
-        # Prevent circular reference
-        if parent_id and tag.id == parent_id:
-            return
-        self._conn.execute(
-            "UPDATE tags SET parent_id = ? WHERE id = ?",
-            (parent_id, tag.id),
-        )
-        self._conn.commit()
+    def set_tag_top(self, tag_id: str, is_top: bool) -> None:
+        """Mark or unmark a tag as a research theme (top-level).
 
-    @_locked
-    def get_tag_tree(self) -> list[dict]:
-        """Return tags as a tree structure for the UI."""
-        rows = self._conn.execute("SELECT * FROM tags").fetchall()
-        all_tags = []
-        for r in rows:
-            all_tags.append({
-                "id": r["id"],
-                "name": r["name"],
-                "parent_id": r["parent_id"],
-                "color": r["color"],
-                "category": r["category"],
-            })
-        return all_tags
-
-    # ── Perspectives ───────────────────────────────────────
-
-    @_locked
-    def list_perspectives(self) -> list[dict]:
-        """Return all perspectives ordered by sort_order."""
-        rows = self._conn.execute(
-            "SELECT * FROM perspectives ORDER BY sort_order, created_at"
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    @_locked
-    def create_perspective(self, name: str, icon: str = "") -> dict:
-        """Create a new perspective."""
-        pid = _new_id()
-        self._conn.execute(
-            "INSERT INTO perspectives (id, name, icon) VALUES (?, ?, ?)",
-            (pid, name.strip(), icon),
-        )
-        self._conn.commit()
-        return {"id": pid, "name": name.strip(), "icon": icon}
-
-    @_locked
-    def delete_perspective(self, perspective_id: str) -> None:
-        """Delete a perspective and all its groups (cascade)."""
-        self._conn.execute(
-            "DELETE FROM perspectives WHERE id = ?", (perspective_id,)
-        )
-        self._conn.commit()
-
-    @_locked
-    def rename_perspective(self, perspective_id: str, name: str) -> None:
-        self._conn.execute(
-            "UPDATE perspectives SET name = ? WHERE id = ?",
-            (name.strip(), perspective_id),
-        )
-        self._conn.commit()
-
-    # ── Tag Groups ─────────────────────────────────────────
-
-    @_locked
-    def list_groups(self, perspective_id: str) -> list[dict]:
-        """Return all groups for a perspective with tag counts."""
-        rows = self._conn.execute(
-            """SELECT g.*, COUNT(m.tag_id) as tag_count
-               FROM tag_groups g
-               LEFT JOIN tag_group_members m ON m.group_id = g.id
-               WHERE g.perspective_id = ?
-               GROUP BY g.id
-               ORDER BY g.sort_order, g.created_at""",
-            (perspective_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    @_locked
-    def create_group(
-        self, perspective_id: str, name: str, sort_order: int = 0
-    ) -> dict:
-        gid = _new_id()
-        self._conn.execute(
-            "INSERT INTO tag_groups (id, perspective_id, name, sort_order) "
-            "VALUES (?, ?, ?, ?)",
-            (gid, perspective_id, name.strip(), sort_order),
-        )
-        self._conn.commit()
-        return {"id": gid, "name": name.strip(), "perspective_id": perspective_id}
-
-    @_locked
-    def delete_group(self, group_id: str) -> None:
-        self._conn.execute(
-            "DELETE FROM tag_groups WHERE id = ?", (group_id,)
-        )
-        self._conn.commit()
-
-    @_locked
-    def rename_group(self, group_id: str, name: str) -> None:
-        self._conn.execute(
-            "UPDATE tag_groups SET name = ? WHERE id = ?",
-            (name.strip(), group_id),
-        )
-        self._conn.commit()
-
-    # ── Group Membership ───────────────────────────────────
-
-    @_locked
-    def add_tag_to_group(self, group_id: str, tag_id: str) -> None:
-        self._conn.execute(
-            "INSERT OR IGNORE INTO tag_group_members (group_id, tag_id) "
-            "VALUES (?, ?)",
-            (group_id, tag_id),
-        )
-        self._conn.commit()
-
-    @_locked
-    def remove_tag_from_group(self, group_id: str, tag_id: str) -> None:
-        self._conn.execute(
-            "DELETE FROM tag_group_members WHERE group_id = ? AND tag_id = ?",
-            (group_id, tag_id),
-        )
-        self._conn.commit()
-
-    @_locked
-    def get_perspective_view(
-        self, perspective_id: str, include_auto: bool = False
-    ) -> list[dict]:
-        """Return groups with their tags for a perspective.
-
-        Returns: [{group_id, group_name, tags: [{id, name, paper_count}]}]
+        Promoting to top-level detaches the tag from any manual parent —
+        the two hierarchy notions are mutually exclusive.
         """
-        source_clause = "" if include_auto else "AND pt.source = 'manual'"
-        groups = self.list_groups(perspective_id)
-        result = []
-        for g in groups:
-            tag_rows = self._conn.execute(
-                f"""SELECT t.id, t.name, t.category, COUNT(p.id) as paper_count
-                    FROM tag_group_members m
-                    JOIN tags t ON t.id = m.tag_id
-                    LEFT JOIN paper_tags pt ON pt.tag_id = t.id {source_clause}
-                    LEFT JOIN papers p ON p.id = pt.paper_id AND p.is_deleted = 0
-                    WHERE m.group_id = ?
-                    GROUP BY t.id
-                    ORDER BY paper_count DESC, t.name""",
-                (g["id"],),
-            ).fetchall()
-            paper_rows = self._conn.execute(
-                """SELECT gp.paper_id FROM group_papers gp
-                   JOIN papers p ON p.id = gp.paper_id AND p.is_deleted = 0
-                   WHERE gp.group_id = ?
-                   ORDER BY p.rowid""",
-                (g["id"],),
-            ).fetchall()
-            result.append({
-                "group_id": g["id"],
-                "group_name": g["name"],
-                "tags": [dict(r) for r in tag_rows],
-                "paper_ids": [r["paper_id"] for r in paper_rows],
-            })
-        return result
-
-    @_locked
-    def add_paper_to_group(self, group_id: str, paper_id: str) -> None:
-        """File a paper directly into a project (Zotero collection membership)."""
-        self._conn.execute(
-            "INSERT OR IGNORE INTO group_papers (group_id, paper_id) VALUES (?, ?)",
-            (group_id, paper_id),
-        )
-        self._conn.commit()
-
-    @_locked
-    def remove_paper_from_group(self, group_id: str, paper_id: str) -> None:
-        self._conn.execute(
-            "DELETE FROM group_papers WHERE group_id = ? AND paper_id = ?",
-            (group_id, paper_id),
-        )
-        self._conn.commit()
-
-    @_locked
-    def get_group_papers(self, group_id: str) -> list[dict]:
-        """Directly-filed papers of a group: [{paper_id, title}]."""
-        rows = self._conn.execute(
-            """SELECT gp.paper_id, p.title FROM group_papers gp
-               JOIN papers p ON p.id = gp.paper_id AND p.is_deleted = 0
-               WHERE gp.group_id = ?
-               ORDER BY p.rowid""",
-            (group_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    @_locked
-    def get_ungrouped_tags(
-        self, perspective_id: str, include_auto: bool = False
-    ) -> list[dict]:
-        """Return tags not in any group of the given perspective."""
-        source_clause = "" if include_auto else "AND pt2.source = 'manual'"
-        rows = self._conn.execute(
-            f"""SELECT t.id, t.name, t.category, COUNT(p.id) as paper_count
-               FROM tags t
-               LEFT JOIN paper_tags pt ON pt.tag_id = t.id
-               LEFT JOIN papers p ON p.id = pt.paper_id AND p.is_deleted = 0
-               WHERE t.id NOT IN (
-                   SELECT m.tag_id FROM tag_group_members m
-                   JOIN tag_groups g ON g.id = m.group_id
-                   WHERE g.perspective_id = ?
-               ) AND EXISTS (
-                   SELECT 1 FROM paper_tags pt2
-                   JOIN papers p2 ON p2.id = pt2.paper_id AND p2.is_deleted = 0
-                   WHERE pt2.tag_id = t.id {source_clause}
-               )
-                   GROUP BY t.id
-                   ORDER BY paper_count DESC, t.name""",
-            (perspective_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    @_locked
-    def migrate_to_perspectives(self) -> str:
-        """One-time migration: convert parent_id hierarchy to perspectives.
-
-        Creates a 'Default' perspective with groups from the old theme tree.
-        """
-        # Check if migration already done
-        existing = self._conn.execute(
-            "SELECT COUNT(*) FROM perspectives"
-        ).fetchone()[0]
-        if existing > 0:
-            return "Perspectives already exist, skipping migration"
-
-        # Create default perspective
-        pid = _new_id()
-        self._conn.execute(
-            "INSERT INTO perspectives (id, name, icon, sort_order) "
-            "VALUES (?, 'Default', '📂', 0)",
-            (pid,),
-        )
-
-        # For each tag with children (theme tags), create a group
-        theme_rows = self._conn.execute(
-            """SELECT DISTINCT parent.id, parent.name
-               FROM tags parent
-               JOIN tags child ON child.parent_id = parent.id
-               ORDER BY parent.name"""
-        ).fetchall()
-
-        for theme in theme_rows:
-            gid = _new_id()
+        if is_top:
             self._conn.execute(
-                "INSERT INTO tag_groups (id, perspective_id, name) "
-                "VALUES (?, ?, ?)",
-                (gid, pid, theme["name"]),
+                "UPDATE tags SET is_top = 1, parent_id = NULL WHERE id = ?",
+                (tag_id,),
             )
-            # Add children to the group
-            children = self._conn.execute(
-                "SELECT id FROM tags WHERE parent_id = ?", (theme["id"],)
-            ).fetchall()
-            for child in children:
-                self._conn.execute(
-                    "INSERT OR IGNORE INTO tag_group_members "
-                    "(group_id, tag_id) VALUES (?, ?)",
-                    (gid, child["id"]),
-                )
-
+        else:
+            self._conn.execute(
+                "UPDATE tags SET is_top = 0 WHERE id = ?", (tag_id,)
+            )
         self._conn.commit()
-        return f"Created 'Default' perspective with {len(theme_rows)} groups"
+
+    @_locked
+    def set_tag_parent(self, tag_id: str, parent_id: str | None) -> None:
+        """Nest a tag under another tag, or detach it with None.
+
+        A nested tag leaves the top level (is_top cleared) and no longer
+        shows up in co-occurrence lists — it is visible under its parent.
+        """
+        if not self._conn.execute(
+            "SELECT 1 FROM tags WHERE id = ?", (tag_id,)
+        ).fetchone():
+            raise ValueError("Tag not found")
+        if parent_id is None:
+            self._conn.execute(
+                "UPDATE tags SET parent_id = NULL WHERE id = ?", (tag_id,)
+            )
+            self._conn.commit()
+            return
+        if parent_id == tag_id:
+            raise ValueError("A tag cannot be nested under itself")
+        if not self._conn.execute(
+            "SELECT 1 FROM tags WHERE id = ?", (parent_id,)
+        ).fetchone():
+            raise ValueError("Parent tag not found")
+        # Reject moves that would create a cycle: walk the ancestor chain
+        cur = parent_id
+        while cur:
+            if cur == tag_id:
+                raise ValueError("Cannot nest a tag under its own descendant")
+            r = self._conn.execute(
+                "SELECT parent_id FROM tags WHERE id = ?", (cur,)
+            ).fetchone()
+            cur = r["parent_id"] if r else None
+        self._conn.execute(
+            "UPDATE tags SET parent_id = ?, is_top = 0 WHERE id = ?",
+            (parent_id, tag_id),
+        )
+        self._conn.commit()
+
+    # ── One-time tag model migration ────────────────────────
+
+    def _migrate_tag_model(self) -> None:
+        """Fold legacy structures into the flat tag model (2026-09).
+
+        Guarded by PRAGMA user_version: a database stamped v2 (or born at
+        that schema) has already been folded — any parent_id column it
+        carries is the manual drag-and-drop nesting, not legacy hierarchy.
+
+        - Each tag group becomes a theme tag (is_top=1); its directly-filed
+          papers get a manual link to that tag.
+        - Legacy parent_id themes (tags that have children) become is_top=1,
+          and child-tagged papers are back-filled with the parent tag so
+          theme filters keep their old semantics.
+        - Container tables and the parent_id column are then dropped.
+        The tags/paper_tags pair is rebuilt via an in-memory round-trip —
+        ALTER TABLE RENAME would rewrite paper_tags' foreign key to the
+        stale table name. A .pre-v2.bak copy of the database file is
+        written first whenever anything needs migrating.
+        """
+        if self._conn.execute("PRAGMA user_version").fetchone()[0] >= 2:
+            return
+        tables = {
+            r[0]
+            for r in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        tag_cols = [r[1] for r in self._conn.execute("PRAGMA table_info(tags)")]
+        needs_data_move = "tag_groups" in tables
+        needs_rebuild = "parent_id" in tag_cols
+        if not (needs_data_move or needs_rebuild):
+            return
+
+        # Backup first (checkpoint WAL so the copy is complete)
+        self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        shutil.copy2(self._path, f"{self._path}.pre-v2.bak")
+
+        # FK constraints must be off while dropping/recreating referenced tables
+        self._conn.commit()
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            if needs_data_move:
+                for g in self._conn.execute(
+                    "SELECT id, name FROM tag_groups"
+                ).fetchall():
+                    tag = self.get_tag_by_name(_normalize_tag_name(g["name"]))
+                    if not tag:
+                        tag = self.create_tag(g["name"])
+                    self._conn.execute(
+                        "UPDATE tags SET is_top = 1 WHERE id = ?", (tag.id,)
+                    )
+                    self._conn.execute(
+                        """INSERT OR IGNORE INTO paper_tags
+                           (paper_id, tag_id, source)
+                           SELECT paper_id, ?, 'manual' FROM group_papers
+                           WHERE group_id = ?""",
+                        (tag.id, g["id"]),
+                    )
+                # Legacy parent_id themes → theme tags; back-fill parent links
+                self._conn.execute(
+                    """UPDATE tags SET is_top = 1 WHERE id IN (
+                           SELECT DISTINCT parent_id FROM tags
+                           WHERE parent_id IS NOT NULL)"""
+                )
+                self._conn.execute(
+                    """INSERT OR IGNORE INTO paper_tags (paper_id, tag_id, source)
+                       SELECT DISTINCT pt.paper_id, c.parent_id, 'manual'
+                       FROM paper_tags pt
+                       JOIN tags c ON c.id = pt.tag_id
+                       WHERE c.parent_id IS NOT NULL"""
+                )
+                for tbl in (
+                    "tag_group_members",
+                    "group_papers",
+                    "tag_groups",
+                    "perspectives",
+                ):
+                    self._conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+                self._conn.commit()
+
+            if needs_rebuild:
+                tag_rows = self._conn.execute(
+                    """SELECT id, name, color, COALESCE(is_top, 0) AS is_top,
+                              category, created_at FROM tags"""
+                ).fetchall()
+                link_rows = self._conn.execute(
+                    "SELECT paper_id, tag_id, source FROM paper_tags"
+                ).fetchall()
+                self._conn.execute("DROP TABLE paper_tags")
+                self._conn.execute("DROP TABLE tags")
+                self._conn.executescript(_SCHEMA)
+                self._conn.executemany(
+                    "INSERT INTO tags (id, name, color, is_top, category, "
+                    "created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    [tuple(r) for r in tag_rows],
+                )
+                self._conn.executemany(
+                    "INSERT INTO paper_tags (paper_id, tag_id, source) "
+                    "VALUES (?, ?, ?)",
+                    [tuple(r) for r in link_rows],
+                )
+                self._conn.commit()
+
+            violations = self._conn.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if violations:
+                raise RuntimeError(
+                    f"tag model migration failed foreign_key_check: {violations}"
+                )
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
+
+    def _migrate_messages_table(self) -> None:
+        """Widen messages from the (user, assistant) era to include tool
+        messages (role='tool' + tool_call_id/tool_name), kept for the
+        agent tool loop. SQLite cannot ALTER a CHECK constraint, so a
+        legacy messages table is rebuilt through a copy. Guarded by the
+        presence of tool_call_id — fresh databases are born at the new
+        schema and skip this. A .pre-v3.bak copy is written first.
+        """
+        cols = [
+            r[1] for r in self._conn.execute("PRAGMA table_info(messages)")
+        ]
+        if not cols or "tool_call_id" in cols:
+            return
+
+        self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        shutil.copy2(self._path, f"{self._path}.pre-v3.bak")
+        self._conn.commit()
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._conn.execute(
+                """CREATE TABLE messages_v3 (
+                    id              TEXT PRIMARY KEY,
+                    conversation_id TEXT REFERENCES conversations(id)
+                                    ON DELETE CASCADE,
+                    role            TEXT NOT NULL
+                                    CHECK(role IN ('user', 'assistant', 'tool')),
+                    content         TEXT NOT NULL,
+                    tool_call_id    TEXT,
+                    tool_name       TEXT,
+                    created_at      TEXT DEFAULT (datetime('now'))
+                )"""
+            )
+            self._conn.execute(
+                """INSERT INTO messages_v3
+                   (id, conversation_id, role, content, created_at)
+                   SELECT id, conversation_id, role, content, created_at
+                   FROM messages"""
+            )
+            self._conn.execute("DROP TABLE messages")
+            self._conn.execute("ALTER TABLE messages_v3 RENAME TO messages")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_messages_conv "
+                "ON messages(conversation_id)"
+            )
+            violations = self._conn.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+            if violations:
+                raise RuntimeError(
+                    f"messages migration failed foreign_key_check: {violations}"
+                )
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
+        self._conn.commit()
+
+    def _normalize_stored_dois(self) -> None:
+        """Rewrite legacy DOIs (resolver-URL form, mixed case) into the
+        canonical lowercase form so the UNIQUE index serves lookups.
+        Rows whose normalized twin already exists keep their spelling —
+        dedup still finds them via the twin.
+        """
+        cols = [
+            r[1] for r in self._conn.execute("PRAGMA table_info(papers)")
+        ]
+        if "doi" not in cols:  # ultra-legacy papers table
+            return
+        rows = self._conn.execute(
+            "SELECT id, doi FROM papers "
+            "WHERE doi IS NOT NULL AND doi != ''"
+        ).fetchall()
+        changed = False
+        for r in rows:
+            norm = normalize_doi(r["doi"])
+            if norm and norm != r["doi"]:
+                try:
+                    self._conn.execute(
+                        "UPDATE papers SET doi = ? WHERE id = ?",
+                        (norm, r["id"]),
+                    )
+                    changed = True
+                except sqlite3.IntegrityError:
+                    pass
+        if changed:
+            self._conn.commit()
 
     # ── Knowledge Graph ────────────────────────────────────
 
@@ -799,7 +878,8 @@ class Database:
         if paper_id_list:
             placeholders = ",".join("?" for _ in paper_id_list)
             tag_rows = self._conn.execute(
-                f"""SELECT t.id, t.name, COUNT(pt.paper_id) as paper_count
+                f"""SELECT t.id, t.name, t.is_top,
+                           COUNT(pt.paper_id) as paper_count
                     FROM tags t
                     JOIN paper_tags pt ON pt.tag_id = t.id
                     WHERE pt.paper_id IN ({placeholders})
@@ -815,7 +895,11 @@ class Database:
                     "label": t["name"],
                     "type": "tag",
                     "size": min(5 + t["paper_count"] * 2, 30),
-                    "extra": {"name": t["name"], "paper_count": t["paper_count"]},
+                    "extra": {
+                        "name": t["name"],
+                        "paper_count": t["paper_count"],
+                        "is_top": bool(t["is_top"]),
+                    },
                 })
                 node_ids.add(f"tag:{t['id']}")
 
@@ -923,23 +1007,11 @@ class Database:
     def find_papers_by_tags(
         self, tag_names: Sequence[str], *, match_all: bool = True
     ) -> list[Paper]:
-        """Filter papers by tags (includes children of theme tags)."""
+        """Filter papers by tag names (AND by default)."""
         if not tag_names:
             return self.list_papers()
 
-        # Expand tag_names to include children
-        expanded = set(tag_names)
-        for name in tag_names:
-            tag = self.get_tag_by_name(name)
-            if tag:
-                children = self._conn.execute(
-                    "SELECT name FROM tags WHERE parent_id = ?", (tag.id,)
-                ).fetchall()
-                for c in children:
-                    expanded.add(c["name"])
-
-        tag_list = list(expanded)
-        placeholders = ",".join("?" for _ in tag_list)
+        placeholders = ",".join("?" for _ in tag_names)
         having = (
             f"HAVING COUNT(DISTINCT t.name) = {len(tag_names)}"
             if match_all
@@ -954,7 +1026,7 @@ class Database:
                 GROUP BY p.id
                 {having}
                 ORDER BY p.added_date DESC""",
-            tag_list,
+            list(tag_names),
         ).fetchall()
         return [self._row_to_paper(r) for r in rows]
 
@@ -994,14 +1066,22 @@ class Database:
     def purge_paper(self, paper_id: str) -> None:
         """Permanently delete a paper row (links cascade).
 
-        Does not touch the stored PDF file.
+        pdf_text rows cascade via FK; the FTS mirror has no FK support
+        and is cleared explicitly. Does not touch the stored PDF file.
         """
+        self._conn.execute(
+            "DELETE FROM pdf_fts WHERE paper_id = ?", (paper_id,)
+        )
         self._conn.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
         self._conn.commit()
 
     @_locked
     def empty_trash(self) -> int:
         """Permanently delete all trashed papers. Returns count purged."""
+        self._conn.execute(
+            "DELETE FROM pdf_fts WHERE paper_id IN "
+            "(SELECT id FROM papers WHERE is_deleted = 1)"
+        )
         cur = self._conn.execute("DELETE FROM papers WHERE is_deleted = 1")
         self._conn.commit()
         return cur.rowcount
@@ -1065,9 +1145,16 @@ class Database:
 
     @_locked
     def update_paper_pdf(self, paper_id: str, pdf_path: str) -> None:
+        # Clearing the path also clears the fingerprint — the invariant
+        # "fingerprint set ⟺ a stored file is linked" keeps exact-file
+        # dedup from refusing to re-attach a dropped duplicate
         self._conn.execute(
-            "UPDATE papers SET pdf_path = ? WHERE id = ?",
-            (pdf_path, paper_id),
+            """UPDATE papers
+               SET pdf_path = ?,
+                   pdf_fingerprint = CASE WHEN ? = '' THEN NULL
+                                          ELSE pdf_fingerprint END
+               WHERE id = ?""",
+            (pdf_path, pdf_path, paper_id),
         )
         self._conn.commit()
 
@@ -1105,6 +1192,82 @@ class Database:
             )
             self._conn.commit()
 
+    # ── PDF full-text index (per-page) ─────────────────────
+
+    @_locked
+    def upsert_pdf_text(
+        self, paper_id: str, page_count: int, blob: bytes
+    ) -> None:
+        """Store the authoritative compressed per-page text of a paper."""
+        self._conn.execute(
+            "INSERT OR REPLACE INTO pdf_text (paper_id, page_count, pages) "
+            "VALUES (?, ?, ?)",
+            (paper_id, page_count, blob),
+        )
+        self._conn.commit()
+
+    @_locked
+    def get_pdf_text(self, paper_id: str) -> tuple[int, bytes] | None:
+        """(page_count, compressed pages blob) or None if not indexed."""
+        row = self._conn.execute(
+            "SELECT page_count, pages FROM pdf_text WHERE paper_id = ?",
+            (paper_id,),
+        ).fetchone()
+        return (row["page_count"], row["pages"]) if row else None
+
+    @_locked
+    def list_pdf_texts(self) -> list[tuple[str, bytes]]:
+        """All indexed live papers as (paper_id, compressed blob)."""
+        rows = self._conn.execute(
+            """SELECT t.paper_id, t.pages FROM pdf_text t
+               JOIN papers p ON p.id = t.paper_id AND p.is_deleted = 0"""
+        ).fetchall()
+        return [(r["paper_id"], r["pages"]) for r in rows]
+
+    @_locked
+    def papers_missing_index(self) -> list[str]:
+        """Live papers with a stored PDF but no full-text index yet."""
+        rows = self._conn.execute(
+            """SELECT p.id FROM papers p
+               WHERE p.is_deleted = 0 AND p.pdf_path IS NOT NULL
+                 AND p.pdf_path != ''
+                 AND NOT EXISTS (SELECT 1 FROM pdf_text t WHERE t.paper_id = p.id)
+               ORDER BY p.added_date DESC"""
+        ).fetchall()
+        return [r["id"] for r in rows]
+
+    @_locked
+    def replace_fts_rows(self, paper_id: str, page_texts: Sequence[str]) -> None:
+        """Mirror the per-page texts into the FTS table (1-based pages)."""
+        self._conn.execute(
+            "DELETE FROM pdf_fts WHERE paper_id = ?", (paper_id,)
+        )
+        self._conn.executemany(
+            "INSERT INTO pdf_fts (paper_id, page, text) VALUES (?, ?, ?)",
+            [
+                (paper_id, i, text)
+                for i, text in enumerate(page_texts, start=1)
+            ],
+        )
+        self._conn.commit()
+
+    @_locked
+    def fts_search(self, phrase: str, *, limit: int = 50) -> list[dict]:
+        """Match an FTS phrase (>=3 chars) against indexed pages.
+
+        Returns [{paper_id, page, snippet}] for live papers only.
+        """
+        rows = self._conn.execute(
+            """SELECT f.paper_id, f.page,
+                      snippet(pdf_fts, 2, '[', ']', '…', 16) AS snippet
+               FROM pdf_fts f
+               JOIN papers p ON p.id = f.paper_id AND p.is_deleted = 0
+               WHERE pdf_fts MATCH ?
+               LIMIT ?""",
+            (phrase, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     # ── Conversations & Messages ──────────────────────────────
 
     @_locked
@@ -1128,19 +1291,37 @@ class Database:
         return row["id"] if row else None
 
     @_locked
-    def add_message(self, conversation_id: str, role: str, content: str) -> None:
+    def add_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        *,
+        tool_call_id: str | None = None,
+        tool_name: str | None = None,
+    ) -> None:
+        if role not in ("user", "assistant", "tool"):
+            raise ValueError(f"invalid message role: {role!r}")
         self._conn.execute(
-            "INSERT INTO messages (id, conversation_id, role, content) "
-            "VALUES (?, ?, ?, ?)",
-            (_new_id(), conversation_id, role, content),
+            "INSERT INTO messages "
+            "(id, conversation_id, role, content, tool_call_id, tool_name) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                _new_id(),
+                conversation_id,
+                role,
+                content,
+                tool_call_id,
+                tool_name,
+            ),
         )
         self._conn.commit()
 
     @_locked
     def get_messages(self, conversation_id: str) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT role, content, created_at FROM messages "
-            "WHERE conversation_id = ? ORDER BY created_at",
+            "SELECT role, content, tool_call_id, tool_name, created_at "
+            "FROM messages WHERE conversation_id = ? ORDER BY created_at",
             (conversation_id,),
         ).fetchall()
         return [dict(r) for r in rows]

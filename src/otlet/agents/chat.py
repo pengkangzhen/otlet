@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from agent_lit.agents.base import AgentBase
-from agent_lit.llm.provider import LLMProvider
-from agent_lit.storage.pdf_store import PDFStore
+from otlet.agents.base import AgentBase
+from otlet.llm.provider import LLMProvider
+from otlet.storage.pdf_store import PDFStore
 
 _SYSTEM_PROMPT = """\
 You are a helpful research assistant. The user is reading an academic paper \

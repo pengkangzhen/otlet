@@ -6,9 +6,9 @@
 # after a successful build, so a failed build retries on the next Stop hook.
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP="$ROOT/dist/Agent-Lit.app"
+APP="$ROOT/dist/Otlet.app"
 STAMP="$ROOT/.reload-stamp"
-LOCKD="/tmp/agent-lit-reload.lockdir"
+LOCKD="/tmp/otlet-reload.lockdir"
 
 echo "[$(date '+%H:%M:%S')] reload-build: waiting for lock / building..."
 until mkdir "$LOCKD" 2>/dev/null; do
@@ -24,10 +24,10 @@ if ! "$ROOT/build.sh"; then
 fi
 touch "$STAMP"
 
-echo "[$(date '+%H:%M:%S')] reload-build: build ok, relaunching Agent-Lit"
-osascript -e 'tell application id "com.agent-lit.app" to quit' >/dev/null 2>&1 || true
+echo "[$(date '+%H:%M:%S')] reload-build: build ok, relaunching Otlet"
+osascript -e 'tell application id "com.otlet.app" to quit' >/dev/null 2>&1 || true
 sleep 1
-pkill -x agent-lit >/dev/null 2>&1 || true
+pkill -x otlet >/dev/null 2>&1 || true
 sleep 1
 open "$APP"
 echo "[$(date '+%H:%M:%S')] reload-build: done"

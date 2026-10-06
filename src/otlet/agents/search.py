@@ -6,9 +6,9 @@ import uuid
 
 import httpx
 
-from agent_lit.agents.base import AgentBase
-from agent_lit.models.author import Author
-from agent_lit.models.paper import Paper
+from otlet.agents.base import AgentBase
+from otlet.models.author import Author
+from otlet.models.paper import Paper
 
 _S2_BASE = "https://api.semanticscholar.org/graph/v1"
 _S2_FIELDS = (
