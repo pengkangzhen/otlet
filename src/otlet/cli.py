@@ -831,6 +831,9 @@ def cmd_log(args, settings: Settings) -> int:
         console.print(f"[yellow]No log yet:[/yellow] {path}")
         return 0
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if not lines:
+        console.print(f"[yellow]Log is empty:[/yellow] {path}")
+        return 0
     for line in lines[-args.lines:]:
         console.print(line, highlight=False)
     console.print(f"[dim]{path}[/dim]")
@@ -976,9 +979,13 @@ def cmd_export(args, settings: Settings) -> int:
         console.print("[yellow]No papers to export.[/yellow]")
         return 1
 
-    out = Path(args.output).expanduser()
+    out = (
+        Path(args.output).expanduser()
+        if args.output
+        else settings.data_dir / "library.bib"
+    )
     out.write_text(generate_bibtex(papers), encoding="utf-8")
-    console.print(f"[green]✓ Exported {len(papers)} papers[/green] → {out}")
+    console.print(f"[green]✓ Exported {len(papers)} papers[/green] → {out.resolve()}")
     return 0
 
 
@@ -1223,7 +1230,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # export / settings
     p_export = sub.add_parser("export", help="Export library to BibTeX")
-    p_export.add_argument("-o", "--output", default="library.bib")
+    p_export.add_argument(
+        "-o",
+        "--output",
+        help="Output file (default: library.bib under the data dir)",
+    )
     p_export.add_argument("--ids", help="Comma-separated paper ids (default: all)")
     p_export.set_defaults(func=cmd_export)
 
