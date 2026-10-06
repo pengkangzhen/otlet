@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Generator
 
@@ -62,6 +63,108 @@ class LLMProvider:
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
+
+    def chat_tools_stream(
+        self,
+        messages: list[dict],
+        *,
+        system: str | None = None,
+        tools: list[dict] | None = None,
+        max_tokens: int = 2048,
+        temperature: float = 0.5,
+    ) -> Generator[dict, None, None]:
+        """Streamed chat completion with function-calling support.
+
+        Yields {"type": "delta", "text": str} as content arrives, then a
+        single final {"type": "message", "content": str, "tool_calls":
+        [...]} in OpenAI shape (tool_calls may be []). Providers that
+        reject streaming with tools fall back to one non-streaming call
+        (the whole content then arrives as one delta). A failure after
+        text has already streamed is re-raised — the caller has shown
+        partial output and must handle it.
+        """
+        full_messages = self._build_messages(messages, system)
+        common = {"max_tokens": max_tokens, "temperature": temperature}
+        common.update(self._base_kwargs())
+        if tools:
+            common["tools"] = tools
+
+        streamed = False
+        try:
+            response = litellm.completion(
+                messages=full_messages, stream=True, **common
+            )
+            content: list[str] = []
+            calls: dict[int, dict] = {}
+            for chunk in response:
+                if not getattr(chunk, "choices", None):
+                    continue
+                delta = chunk.choices[0].delta
+                piece = getattr(delta, "content", None)
+                if piece:
+                    streamed = True
+                    content.append(piece)
+                    yield {"type": "delta", "text": piece}
+                for tc in getattr(delta, "tool_calls", None) or []:
+                    streamed = True
+                    slot = calls.setdefault(
+                        tc.index, {"id": "", "name": "", "arguments": ""}
+                    )
+                    if tc.id:
+                        slot["id"] = tc.id
+                    fn = tc.function
+                    if fn is not None:
+                        if fn.name:
+                            slot["name"] = slot["name"] or fn.name
+                        if fn.arguments:
+                            slot["arguments"] += fn.arguments
+            yield {
+                "type": "message",
+                "content": "".join(content),
+                "tool_calls": [
+                    {
+                        "id": slot["id"] or f"call_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": slot["name"],
+                            "arguments": slot["arguments"],
+                        },
+                    }
+                    for i, slot in sorted(calls.items())
+                    if slot["name"]
+                ],
+            }
+        except Exception:
+            if streamed:
+                raise
+            yield from self._chat_tools_sync(full_messages, common)
+
+    def _chat_tools_sync(
+        self, full_messages: list[dict], common: dict
+    ) -> Generator[dict, None, None]:
+        """Non-streaming fallback for streaming-with-tools rejection."""
+        response = litellm.completion(
+            messages=full_messages, stream=False, **common
+        )
+        message = response.choices[0].message
+        text = message.content or ""
+        raw_calls = getattr(message, "tool_calls", None) or []
+        tool_calls = []
+        for tc in raw_calls:
+            fn = tc.function
+            args = fn.arguments
+            if not isinstance(args, str):
+                args = json.dumps(args or {})
+            tool_calls.append(
+                {
+                    "id": tc.id or f"call_{len(tool_calls)}",
+                    "type": "function",
+                    "function": {"name": fn.name, "arguments": args},
+                }
+            )
+        if text:
+            yield {"type": "delta", "text": text}
+        yield {"type": "message", "content": text, "tool_calls": tool_calls}
 
     def _build_messages(
         self,

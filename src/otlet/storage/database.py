@@ -7,7 +7,6 @@ import shutil
 import sqlite3
 import threading
 import uuid
-import zlib
 from pathlib import Path
 from typing import Sequence
 
@@ -105,6 +104,7 @@ CREATE TABLE IF NOT EXISTS messages (
     content         TEXT NOT NULL,
     tool_call_id    TEXT,               -- pairs a tool message with its call
     tool_name       TEXT,
+    tool_calls      TEXT,               -- JSON: OpenAI tool_calls the assistant issued
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
@@ -734,17 +734,19 @@ class Database:
             self._conn.execute("PRAGMA foreign_keys=ON")
 
     def _migrate_messages_table(self) -> None:
-        """Widen messages from the (user, assistant) era to include tool
-        messages (role='tool' + tool_call_id/tool_name), kept for the
-        agent tool loop. SQLite cannot ALTER a CHECK constraint, so a
-        legacy messages table is rebuilt through a copy. Guarded by the
-        presence of tool_call_id — fresh databases are born at the new
-        schema and skip this. A .pre-v3.bak copy is written first.
+        """Widen messages from the (user, assistant) era to carry agent
+        tool traffic: role='tool', tool_call_id/tool_name, and the
+        tool_calls JSON on assistant rows (without it a saved history
+        cannot be replayed as a valid message sequence). SQLite cannot
+        ALTER a CHECK constraint, so a legacy messages table is rebuilt
+        through a copy. Guarded by the presence of tool_calls — fresh
+        databases are born at the new schema and skip this. A .pre-v3.bak
+        copy is written first.
         """
         cols = [
             r[1] for r in self._conn.execute("PRAGMA table_info(messages)")
         ]
-        if not cols or "tool_call_id" in cols:
+        if not cols or "tool_calls" in cols:
             return
 
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -762,14 +764,20 @@ class Database:
                     content         TEXT NOT NULL,
                     tool_call_id    TEXT,
                     tool_name       TEXT,
+                    tool_calls      TEXT,
                     created_at      TEXT DEFAULT (datetime('now'))
                 )"""
             )
+            carry = [
+                c for c in (
+                    "id", "conversation_id", "role", "content",
+                    "tool_call_id", "tool_name", "created_at",
+                )
+                if c in cols
+            ]
             self._conn.execute(
-                """INSERT INTO messages_v3
-                   (id, conversation_id, role, content, created_at)
-                   SELECT id, conversation_id, role, content, created_at
-                   FROM messages"""
+                f"""INSERT INTO messages_v3 ({", ".join(carry)})
+                    SELECT {", ".join(carry)} FROM messages"""
             )
             self._conn.execute("DROP TABLE messages")
             self._conn.execute("ALTER TABLE messages_v3 RENAME TO messages")
@@ -1299,13 +1307,17 @@ class Database:
         *,
         tool_call_id: str | None = None,
         tool_name: str | None = None,
+        tool_calls: str | None = None,
     ) -> None:
+        """Append one message. tool_calls is the JSON-serialized OpenAI
+        tool_calls array an assistant message issued (None otherwise);
+        tool_call_id/tool_name are set on role='tool' result rows."""
         if role not in ("user", "assistant", "tool"):
             raise ValueError(f"invalid message role: {role!r}")
         self._conn.execute(
             "INSERT INTO messages "
-            "(id, conversation_id, role, content, tool_call_id, tool_name) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(id, conversation_id, role, content, tool_call_id, tool_name, "
+            " tool_calls) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 _new_id(),
                 conversation_id,
@@ -1313,6 +1325,7 @@ class Database:
                 content,
                 tool_call_id,
                 tool_name,
+                tool_calls,
             ),
         )
         self._conn.commit()
@@ -1320,8 +1333,9 @@ class Database:
     @_locked
     def get_messages(self, conversation_id: str) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT role, content, tool_call_id, tool_name, created_at "
-            "FROM messages WHERE conversation_id = ? ORDER BY created_at",
+            "SELECT role, content, tool_call_id, tool_name, tool_calls, "
+            "created_at FROM messages "
+            "WHERE conversation_id = ? ORDER BY created_at",
             (conversation_id,),
         ).fetchall()
         return [dict(r) for r in rows]

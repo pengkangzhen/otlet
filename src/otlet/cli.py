@@ -678,7 +678,12 @@ def cmd_note(args, settings: Settings) -> int:
 
 
 def cmd_chat(args, settings: Settings) -> int:
-    """Chat with a paper: one-shot (-m) or an interactive session."""
+    """Chat with a paper: one-shot (-m) or an interactive session.
+
+    The agent runs a tool loop: it reads PDF pages (read_pdf_pages) and
+    searches the library (search_library) as needed; intermediate tool
+    traffic is persisted with the conversation and replayed as context.
+    """
     with _open_db(settings) as db:
         paper = db.get_paper(args.paper_id)
         if not paper:
@@ -690,31 +695,26 @@ def cmd_chat(args, settings: Settings) -> int:
             api_key=settings.api_key,
             api_base=settings.api_base,
         )
-        agent = ChatAgent(llm, PDFStore(settings.pdf_dir))
-        agent._db = db
-        conv_id = db.get_conversation(args.paper_id)
-        if not conv_id:
-            conv_id = db.create_conversation(args.paper_id)
+        agent = ChatAgent(llm, PDFStore(settings.pdf_dir), db=db)
 
         def ask(message: str) -> None:
-            db.add_message(conv_id, "user", message)
-            history = db.get_messages(conv_id)
-            messages = [
-                {"role": m["role"], "content": m["content"]} for m in history
-            ]
             console.print("[bold cyan]otlet›[/bold cyan] ", end="")
             try:
-                answer = ""
-                for chunk in agent.stream(args.paper_id, messages):
-                    console.out(chunk, end="")
-                    answer += chunk
+                for event in agent.ask(args.paper_id, message):
+                    if event["type"] == "delta":
+                        console.out(event["text"], end="")
+                    elif event["type"] == "done" and (
+                        event["end_reason"] != "done"
+                        or not event["answer"]
+                    ):
+                        # non-streamed outcomes: failure note or stop reason
+                        console.print(event["answer"])
             except Exception as e:
                 console.print()
                 _error(f"LLM call failed: {e} "
                        "(configure via `otlet settings set`)")
                 return
             console.print("\n")
-            db.add_message(conv_id, "assistant", answer)
 
         if args.message:
             ask(args.message)

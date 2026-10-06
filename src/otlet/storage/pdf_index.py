@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import zlib
-from pathlib import Path
 
 import pymupdf
 

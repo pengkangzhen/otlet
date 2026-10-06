@@ -41,8 +41,7 @@ class Api:
         self._pdf_store = PDFStore(settings.pdf_dir)
         self._llm = LLMProvider()
         self._search_agent = SearchAgent(api_key=settings.s2_api_key)
-        self._chat_agent = ChatAgent(self._llm, self._pdf_store)
-        self._chat_agent._db = self._db
+        self._chat_agent = ChatAgent(self._llm, self._pdf_store, db=self._db)
         self._pdf_index = PDFIndex(self._db, self._pdf_store)
         self._pdf_extractor = PDFMetadataExtractor(
             s2_api_key=settings.s2_api_key
@@ -324,33 +323,38 @@ class Api:
     # ── Chat ──────────────────────────────────────────────────
 
     def get_chat_history(self, paper_id: str) -> str:
+        """Chat bubbles for the frontend: user turns and assistant
+        answers only — tool traffic and empty tool-request turns stay
+        internal."""
         conv_id = self._db.get_conversation(paper_id)
         if not conv_id:
             return json.dumps([])
-        messages = self._db.get_messages(conv_id)
-        return json.dumps(messages)
+        messages = [
+            {
+                "role": m["role"],
+                "content": m["content"],
+                "created_at": m["created_at"],
+            }
+            for m in self._db.get_messages(conv_id)
+            if m["role"] == "user"
+            or (m["role"] == "assistant" and (m["content"] or "").strip())
+        ]
+        return json.dumps(messages, ensure_ascii=False)
 
     def send_chat_message(self, paper_id: str, message: str) -> str:
-        """Send a chat message and return the AI response."""
-        # Get or create conversation
-        conv_id = self._db.get_conversation(paper_id)
-        if not conv_id:
-            conv_id = self._db.create_conversation(paper_id)
-
-        # Save user message
-        self._db.add_message(conv_id, "user", message)
-
-        # Build history
-        history = self._db.get_messages(conv_id)
-        messages = [{"role": m["role"], "content": m["content"]} for m in history]
-
-        # Get AI response
-        response = self._chat_agent.run(paper_id, messages)
-
-        # Save response
-        self._db.add_message(conv_id, "assistant", response)
-
-        return json.dumps({"response": response})
+        """Send a chat message; the agent may read PDF pages and search
+        the library through tools before answering (its tool traffic is
+        persisted with the conversation). Returns {"response",
+        "end_reason"}."""
+        answer, end_reason = "", "failed"
+        for event in self._chat_agent.ask(paper_id, message):
+            if event["type"] == "done":
+                answer = event["answer"]
+                end_reason = event["end_reason"]
+        return json.dumps(
+            {"response": answer, "end_reason": end_reason},
+            ensure_ascii=False,
+        )
 
     # ── Bulk Import ───────────────────────────────────────────
 
@@ -694,7 +698,7 @@ class Api:
             api_key=self._settings.api_key,
             api_base=self._settings.api_base,
         )
-        self._chat_agent = ChatAgent(self._llm, self._pdf_store)
+        self._chat_agent = ChatAgent(self._llm, self._pdf_store, db=self._db)
         return json.dumps({"ok": True})
 
     def set_theme(self, theme: str) -> str:

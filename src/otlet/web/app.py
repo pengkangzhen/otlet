@@ -49,6 +49,8 @@ def _build_menu(api: Api) -> list[Menu]:
     return [
         # __app__ menu: items appear under the macOS "Otlet" app menu
         Menu("__app__", [
+            MenuAction("About Otlet", js("showAbout()")),
+            MenuSeparator(),
             MenuAction("Preferences…", js("openSettingsDialog()")),
             MenuAction("Toggle Theme", js("toggleThemeMenu()")),
         ]),

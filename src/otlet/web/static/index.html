@@ -1844,8 +1844,8 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
   <div class="col-detail" id="colDetail" style="display:none">
     <div class="detail-close" onclick="closeDetail()" title="Close panel"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></div>
     <div class="welcome" id="welcomeScreen">
-      <div class="logo"><svg viewBox="0 0 16 16"><path d="M2 3.5c2-1.2 4-1.2 6 0 2-1.2 4-1.2 6 0V13c-2-1.2-4-1.2-6 0-2-1.2-4-1.2-6 0z"/><path d="M8 3.5V13"/></svg></div>
-      <h2>Otlet</h2>
+      <div class="logo" onclick="showAbout()" title="About Otlet" style="cursor:pointer"><svg viewBox="0 0 16 16"><path d="M2 3.5c2-1.2 4-1.2 6 0 2-1.2 4-1.2 6 0V13c-2-1.2-4-1.2-6 0-2-1.2-4-1.2-6 0z"/><path d="M8 3.5V13"/></svg></div>
+      <h2 onclick="showAbout()" title="About Otlet" style="cursor:pointer">Otlet</h2>
       <p>Select a paper to view details and manage metadata.<br>
       Import PDFs to automatically identify and add papers.</p>
     </div>
@@ -2018,6 +2018,26 @@ function zu(){return zu=Object.assign||function(g){for(var t=1;t<arguments.lengt
     <div class="dialog-actions">
       <button class="btn" onclick="closeSettingsDialog()">Cancel</button>
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- About Dialog -->
+<div class="dialog-overlay" id="aboutDialog">
+  <div class="dialog" style="width:470px">
+    <h3><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v3.8"/><path d="M8 4.6h.01"/></svg>About Otlet</h3>
+    <div class="settings-section" style="text-align:center;padding:14px 0 10px">
+      <div style="font-size:22px;font-weight:700;letter-spacing:.5px;color:var(--text)">Otlet</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Version 0.1.0 · Agent-based Literature Manager</div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-title">In Memoriam Paul Otlet</div>
+      <p style="margin:0;font-size:13px;line-height:1.85;text-align:justify;color:var(--text)">
+        Paul Otlet（保罗·奥特莱，1868–1944，比利时文献学家）被公认为“文献学 / 信息科学之父”——他在 1930 年代就设想了用卡片和网络把全人类知识互相链接起来的 Mundaneum（蒙达尼姆，他建的知识宫殿），比万维网早了半个多世纪，也被视为搜索引擎与超链接概念的先驱。Otlet 做的正是他当年做的事：把文献组织成一张可交叉检索的标签网络，再由 AI 帮你读。用他的名字命名，既是致敬，也把“标签驱动 + 智能检索”的产品哲学一句话讲清楚了。
+      </p>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn btn-primary" onclick="closeAboutDialog()">Close</button>
     </div>
   </div>
 </div>
@@ -2202,7 +2222,11 @@ function focusSearch() {
 }
 
 function showAbout() {
-  alert('Otlet\nVersion 0.1.0\nAgent-based Literature Manager');
+  document.getElementById('aboutDialog').classList.add('active');
+}
+
+function closeAboutDialog() {
+  document.getElementById('aboutDialog').classList.remove('active');
 }
 
 // ── Init ──────────────────────────────────────────────
