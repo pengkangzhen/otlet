@@ -70,6 +70,10 @@ otlet trash                            # 回收站：list / restore / purge / em
 otlet grep "network design"            # 搜正文：哪篇论文第几页 + 上下文
 otlet index                            # 为存量 PDF 补建逐页全文索引
 
+# 元数据补全（OpenAlex → Semantic Scholar 降级链，只补空字段）
+otlet enrich --dry-run                 # 预览将回填的 year/venue/abstract 等
+otlet enrich                           # 实际写入（--ids 选指定论文）
+
 # 标签
 otlet tag add <paper_id> resilience location   # 打标签（可多个）
 otlet tag remove <paper_id> resilience
@@ -84,8 +88,10 @@ otlet chat <paper_id>                  # 交互式对话（流式输出，历史
 otlet chat <paper_id> -m "这篇论文的方法是什么？"  # 单次提问
 
 AI 对话运行**工具循环**：模型按需调用 `read_pdf_pages`（单次 ≤8 页，超长页
-可续读）与 `search_library`（全库全文检索）亲自读论文，回答须注明实际读过
-的页码范围，不再截断全文硬塞进提示词。
+可续读）、`search_library`（全库全文检索）与 `find_literature`（**声明核查**：
+对"有没有文献支持 X"给出 supports/partial/none 三档判定——判定由代码规则计算，
+模型只转述；partial/none 不得包装成"有文献支持"），回答须注明实际读过的页码
+范围，不再截断全文硬塞进提示词。
 
 # 导出与配置
 otlet export -o library.bib            # 导出 BibTeX（--ids 选部分论文）
@@ -119,6 +125,7 @@ model: gpt-4o-mini          # LLM 模型（支持 OpenAI/Anthropic 等）
 api_key: null                # LLM API Key（也可通过环境变量设置）
 api_base: null               # 自定义 API 地址（用于本地模型）
 s2_api_key: null                 # Semantic Scholar API Key（可选）
+openalex_email: null         # OpenAlex 礼貌池邮箱（可选，提升限额）
 ```
 
 也可通过环境变量配置：

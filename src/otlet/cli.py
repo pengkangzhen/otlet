@@ -19,6 +19,7 @@ from rich.table import Table
 from otlet import __version__, platform
 from otlet.agents.chat import ChatAgent
 from otlet.agents.classify import ClassifyAgent
+from otlet.agents.openalex import OpenAlexClient
 from otlet.agents.search import SearchAgent
 from otlet.config.settings import Settings
 from otlet.llm.provider import LLMProvider
@@ -685,7 +686,13 @@ def cmd_chat(args, settings: Settings) -> int:
             api_key=settings.api_key,
             api_base=settings.api_base,
         )
-        agent = ChatAgent(llm, PDFStore(settings.pdf_dir), db=db)
+        agent = ChatAgent(
+            llm,
+            PDFStore(settings.pdf_dir),
+            db=db,
+            openalex=OpenAlexClient(mailto=settings.openalex_email),
+            search_agent=SearchAgent(api_key=settings.s2_api_key),
+        )
 
         def ask(message: str) -> None:
             console.print("[bold cyan]otlet›[/bold cyan] ", end="")
@@ -727,6 +734,62 @@ def cmd_chat(args, settings: Settings) -> int:
                 continue
             ask(question)
         return 0
+
+
+# ── enrich (metadata backfill) ─────────────────────────────
+
+
+def cmd_enrich(args, settings: Settings) -> int:
+    """Backfill missing metadata via OpenAlex → Semantic Scholar."""
+    from otlet.services.enrich import enrich_paper
+
+    with _open_db(settings) as db:
+        if args.ids:
+            wanted = [i.strip() for i in args.ids.split(",") if i.strip()]
+            papers = [p for p in (db.get_paper(i) for i in wanted) if p]
+        else:
+            ids = db.papers_needing_enrich()
+            if args.limit:
+                ids = ids[: args.limit]
+            papers = [db.get_paper(i) for i in ids]
+            papers = [p for p in papers if p]
+
+        if not papers:
+            console.print("[yellow]No papers need enrichment.[/yellow]")
+            return 0
+
+        openalex = OpenAlexClient(mailto=settings.openalex_email)
+        s2 = SearchAgent(api_key=settings.s2_api_key)
+        filled_count = matched = 0
+        for paper in papers:
+            result = enrich_paper(
+                db, paper, openalex=openalex, search_agent=s2,
+                dry_run=args.dry_run,
+            )
+            if result["match"] is None:
+                console.print(f"[yellow]⏭[/yellow] {paper.title} — no match")
+                continue
+            matched += 1
+            patch = result["filled"]
+            if not patch:
+                console.print(
+                    f"[dim]✓[/dim] {paper.title} — already complete "
+                    f"({result['match']})"
+                )
+                continue
+            filled_count += 1
+            fields = ", ".join(
+                f"{k}={str(v)[:40]}" for k, v in patch.items()
+            )
+            tag = "[cyan]preview[/cyan] " if args.dry_run else ""
+            console.print(
+                f"[green]✓[/green] {paper.title} — {tag}{fields}"
+            )
+        console.print(
+            f"{matched}/{len(papers)} matched, "
+            f"{filled_count} papers {'to fill' if args.dry_run else 'filled'}"
+        )
+    return 0
 
 
 # ── export / settings ──────────────────────────────────────
@@ -840,6 +903,21 @@ def build_parser() -> argparse.ArgumentParser:
         "index", help="Build the full-text index for stored PDFs missing one"
     )
     p_index.set_defaults(func=cmd_index)
+
+    # enrich — metadata backfill
+    p_enrich = sub.add_parser(
+        "enrich", help="Backfill missing metadata (OpenAlex → S2)"
+    )
+    p_enrich.add_argument(
+        "--ids", help="Comma-separated paper ids (default: papers missing fields)"
+    )
+    p_enrich.add_argument(
+        "--limit", type=int, help="Max papers to process"
+    )
+    p_enrich.add_argument(
+        "--dry-run", action="store_true", help="Preview fills without writing"
+    )
+    p_enrich.set_defaults(func=cmd_enrich)
 
     # add — unified import
     p_add = sub.add_parser(

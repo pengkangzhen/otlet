@@ -13,6 +13,8 @@ import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from otlet.agents.find_literature import run_find_literature
+from otlet.agents.openalex import OpenAlexClient
 from otlet.storage.database import Database
 from otlet.storage.pdf_index import PDFIndex
 from otlet.storage.pdf_store import PDFStore
@@ -46,7 +48,12 @@ def openai_schema(tools: dict[str, ToolSpec]) -> list[dict]:
 
 
 def build_tools(
-    paper_id: str, db: Database, pdf_store: PDFStore
+    paper_id: str,
+    db: Database,
+    pdf_store: PDFStore,
+    *,
+    openalex: OpenAlexClient | None = None,
+    search_agent=None,
 ) -> dict[str, ToolSpec]:
     """The tool set for a conversation about one paper."""
     index = PDFIndex(db, pdf_store)
@@ -165,6 +172,22 @@ def build_tools(
             ),
         })
 
+    def find_literature(args: dict) -> str:
+        claims = args.get("claims") or []
+        claims_en = args.get("claims_en") or []
+        if not claims:
+            return _j({"error": "claims is required"})
+        return _j(run_find_literature(
+            db,
+            claims=[str(c) for c in claims],
+            claims_en=[str(c) for c in claims_en],
+            year_from=args.get("year_from"),
+            year_to=args.get("year_to"),
+            openalex=openalex,
+            search_agent=search_agent,
+            pdf_index=index,
+        ))
+
     return {
         "read_pdf_pages": ToolSpec(
             name="read_pdf_pages",
@@ -218,5 +241,47 @@ def build_tools(
                 "required": ["query"],
             },
             execute=search_library,
+        ),
+        "find_literature": ToolSpec(
+            name="find_literature",
+            description=(
+                "Verify whether published literature SUPPORTS given "
+                "claims — use it whenever the user asks 'is there "
+                "literature supporting X' or 'find evidence for X' "
+                "(有没有文献支持/帮我找依据). Pass each claim as a short "
+                "factual statement, not a topic. STRONGLY prefer also "
+                "passing claims_en (English versions): evidence matching "
+                "is lexical and a Chinese claim cannot match an English "
+                "abstract. Verdicts (supports/partial/none) are computed "
+                "by fixed code rules — report them as returned: none "
+                "means 'not determined', NOT disproved."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "claims": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Claims to verify (short factual "
+                                       "statements)",
+                    },
+                    "claims_en": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "English versions of the claims, "
+                                       "same order (recommended)",
+                    },
+                    "year_from": {
+                        "type": "integer",
+                        "description": "Optional publication year floor",
+                    },
+                    "year_to": {
+                        "type": "integer",
+                        "description": "Optional publication year ceiling",
+                    },
+                },
+                "required": ["claims"],
+            },
+            execute=find_literature,
         ),
     }

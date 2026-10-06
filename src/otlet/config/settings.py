@@ -18,6 +18,8 @@ class Settings(BaseModel):
     api_key: str | None = None
     api_base: str | None = None
     s2_api_key: str | None = None
+    # OpenAlex polite-pool contact email (optional, improves rate limits)
+    openalex_email: str | None = None
     theme: Literal["light", "dark", "classic-light", "classic-dark"] = "light"
 
     @classmethod

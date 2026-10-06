@@ -11,6 +11,7 @@ import webview
 from otlet import platform
 from otlet.agents.chat import ChatAgent
 from otlet.agents.classify import ClassifyAgent
+from otlet.agents.openalex import OpenAlexClient
 from otlet.agents.search import SearchAgent
 from otlet.config.settings import Settings
 from otlet.llm.provider import LLMProvider
@@ -42,7 +43,14 @@ class Api:
         self._pdf_store = PDFStore(settings.pdf_dir)
         self._llm = LLMProvider()
         self._search_agent = SearchAgent(api_key=settings.s2_api_key)
-        self._chat_agent = ChatAgent(self._llm, self._pdf_store, db=self._db)
+        self._openalex = OpenAlexClient(mailto=settings.openalex_email)
+        self._chat_agent = ChatAgent(
+            self._llm,
+            self._pdf_store,
+            db=self._db,
+            openalex=self._openalex,
+            search_agent=self._search_agent,
+        )
         self._pdf_index = PDFIndex(self._db, self._pdf_store)
         self._pdf_extractor = PDFMetadataExtractor(
             s2_api_key=settings.s2_api_key
@@ -696,7 +704,13 @@ class Api:
             api_key=self._settings.api_key,
             api_base=self._settings.api_base,
         )
-        self._chat_agent = ChatAgent(self._llm, self._pdf_store, db=self._db)
+        self._chat_agent = ChatAgent(
+            self._llm,
+            self._pdf_store,
+            db=self._db,
+            openalex=self._openalex,
+            search_agent=self._search_agent,
+        )
         return json.dumps({"ok": True})
 
     def set_theme(self, theme: str) -> str:

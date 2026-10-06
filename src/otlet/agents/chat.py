@@ -21,6 +21,7 @@ from otlet.agents.loop import (
     END_STUCK,
     run_turn,
 )
+from otlet.agents.openalex import OpenAlexClient
 from otlet.agents.tools import build_tools
 from otlet.llm.provider import LLMProvider
 from otlet.storage.database import Database
@@ -35,6 +36,9 @@ Tools:
   10000 chars per call; follow the returned next field to continue)
 - search_library — search the full text of every indexed PDF in the
   library, returning pages with snippets
+- find_literature — verify whether published literature supports
+  given claims; verdicts (supports/partial/none) come from fixed code
+  rules, not from you
 
 Guidelines:
 - Answer in the same language as the user's question
@@ -44,6 +48,14 @@ Guidelines:
   "pages 3-5"); never claim to have read the whole paper unless you did
 - Use search_library when the question involves other papers in the
   library, and name which papers matched
+- When the user asks whether literature supports a claim ("有没有文献
+  支持X"), you MUST call find_literature — never stitch search results
+  yourself and claim support. Report the returned verdicts as they
+  are: presenting partial/none results as "有文献支持" is fabricating
+  evidence, absolutely forbidden. "not_found" means not determined,
+  not disproved — say so. Pass claims_en (English versions) alongside
+  Chinese claims: evidence matching is lexical and cannot cross
+  languages
 - If there is no PDF, say so instead of guessing from the title
 - Be specific: reference sections, equations, figures, and tables by
   their numbers
@@ -84,10 +96,15 @@ class ChatAgent(AgentBase):
         llm: LLMProvider,
         pdf_store: PDFStore,
         db: Database | None = None,
+        *,
+        openalex: OpenAlexClient | None = None,
+        search_agent=None,
     ) -> None:
         self._llm = llm
         self._pdf_store = pdf_store
         self._db = db
+        self._openalex = openalex
+        self._search_agent = search_agent
 
     def run(self, paper_id: str, message: str) -> str:  # type: ignore[override]
         """One-shot turn without streaming: returns the final answer."""
@@ -116,7 +133,13 @@ class ChatAgent(AgentBase):
         db.add_message(conv_id, "user", message)
 
         history = build_api_messages(db.get_messages(conv_id))
-        tools = build_tools(paper_id, db, self._pdf_store)
+        tools = build_tools(
+            paper_id,
+            db,
+            self._pdf_store,
+            openalex=self._openalex,
+            search_agent=self._search_agent,
+        )
 
         def persist(event: dict) -> None:
             if event["kind"] == "assistant":

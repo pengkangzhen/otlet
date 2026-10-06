@@ -521,7 +521,8 @@ class Database:
         """Update one or more paper fields."""
         allowed = {"title", "year", "venue", "volume", "issue", "pages",
                    "publisher", "language", "doi", "url", "abstract",
-                   "paper_type", "pdf_path", "pdf_fingerprint"}
+                   "paper_type", "pdf_path", "pdf_fingerprint",
+                   "citation_count"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if "doi" in updates:
             updates["doi"] = normalize_doi(updates["doi"])
@@ -1241,6 +1242,19 @@ class Database:
                  AND p.pdf_path != ''
                  AND NOT EXISTS (SELECT 1 FROM pdf_text t WHERE t.paper_id = p.id)
                ORDER BY p.added_date DESC"""
+        ).fetchall()
+        return [r["id"] for r in rows]
+
+    @_locked
+    def papers_needing_enrich(self) -> list[str]:
+        """Live papers missing a core metadata field (abstract/year/venue)."""
+        rows = self._conn.execute(
+            """SELECT id FROM papers
+               WHERE is_deleted = 0 AND (
+                   abstract IS NULL OR TRIM(abstract) = ''
+                   OR year IS NULL
+                   OR venue IS NULL OR TRIM(venue) = '')
+               ORDER BY added_date DESC"""
         ).fetchall()
         return [r["id"] for r in rows]
 
